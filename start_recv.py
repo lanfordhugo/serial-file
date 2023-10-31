@@ -18,7 +18,7 @@ else:
 # 保存路径和com口
 com = input('填写串口号，按回车键继续:\n')
 save_path = input('填写需要保存的文件路径(带文件名)，按回车键继续:\n')
-# com = 'com17'
+# com = 'com16'
 # save_path = './recv_temp/recv.txt'
 
 
@@ -35,7 +35,7 @@ recv_port = serial.Serial(
 # 单次传输的最大数据长度
 MAX_DATA_LENGTH = 1024 * 10
 
-recver = Receiver(save_path, recv_port, MAX_DATA_LENGTH)
+recver = Receiver(recv_port, save_path, MAX_DATA_LENGTH)
 recver.start_receiving()
 
 input('按回车键退出\n')

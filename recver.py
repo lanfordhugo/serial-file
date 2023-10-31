@@ -4,10 +4,12 @@ import time
 from frame_handle import read_frame, make_pack
 from m_print import d_print, e_print, progress_bar
 import frame_handle
+import os
+
 
 
 class Receiver:
-    def __init__(self, recv_path, serial_port: serial.Serial, signle_max_length=256):
+    def __init__(self, serial_port: serial.Serial, recv_path=None, signle_max_length=256):
 
         self.recv_path = recv_path
         self.file_size = 0  # 文件总大小
@@ -15,12 +17,25 @@ class Receiver:
         self.signle_max_length = signle_max_length  # 单次传输的最大数据长度
         self.file_data = b''
         self.recv_size = 0
-
-    def send_file_info_request(self):
+        
+    def init_params(self, recv_path):
+        self.recv_path = recv_path
+        self.file_size = 0  # 文件总大小
+        self.file_data = b''
+        self.recv_size = 0
+        
+    def send_file_size_request(self):
         # 主动向发送者发送文件信息请求，请求获取文件大小
         request_cmd = struct.pack('<B', frame_handle.VAL_REQUEST_FILE)
         pack_data = make_pack(frame_handle.CMD_REQUEST_FILE_SIZE, request_cmd)
-        d_print('file_info_request:', pack_data)
+        # d_print('file_size_request:', pack_data)
+        self.serial_port.write(pack_data)
+    
+    def send_file_name_request(self):
+        # 主动向发送者发送文件名请求，请求获取文件名
+        request_cmd = struct.pack('<B', frame_handle.VAL_REQUEST_FILE)
+        pack_data = make_pack(frame_handle.CMD_REQUEST_FILE_NAME, request_cmd)
+        # d_print('file_name_request:', pack_data)
         self.serial_port.write(pack_data)
 
     def receive_file_size(self):
@@ -29,18 +44,33 @@ class Receiver:
         if data is None or cmd is None:
             return None
         if cmd != frame_handle.CMD_REPLY_FILE_SIZE:
-            d_print("cmd ERROR:", cmd)
+            e_print("cmd ERROR:", cmd)
             return None
 
         # 获取文件大小
         self.file_size = int.from_bytes(data, byteorder='little')
         d_print(f'file_size:{(self.file_size / 1024):.2f}kb')
+    
+    def receive_file_name(self):
+        # 接收发送者返回的文件名信息
+        cmd, data = read_frame(self.serial_port, frame_handle.format_size + frame_handle.MAX_FILE_NAME_LENGTH)
+        if data is None or cmd is None:
+            return None
+        if cmd != frame_handle.CMD_REPLY_FILE_NAME:
+            e_print("cmd ERROR:", cmd)
+            return None
+        # 去除文件名后面的0
+        data = data.rstrip(b'\x00')
+        # 获取文件名
+        file_name = data.decode('utf-8')
+        d_print(f'file_name:[{file_name}]')
+        return file_name
 
     def send_data_request(self, addr, length):
         # 根据自身能力，在一定数据长度范围内定义一个周期，周期性地向发送者请求数据包
+        # d_print(f'request addr:{addr}, len:{length}')
         request_data = struct.pack('<IH', addr, length)
         pack_data = make_pack(frame_handle.CMD_REQUEST_DATA, request_data)
-        # d_print(f'request addr:{addr}, len:{length}')
         self.serial_port.write(pack_data)
 
     def receive_data_package(self):
@@ -62,7 +92,7 @@ class Receiver:
 
         # 等待发送者发送文件信息
         while True:
-            self.send_file_info_request()
+            self.send_file_size_request()
             self.receive_file_size()
             if self.file_size is not None and self.file_size > 0:
                 break
@@ -93,12 +123,10 @@ class Receiver:
             # 接收完了数据保存数据到文件
             if self.recv_size == self.file_size:
                 print()
-                d_print('receive file success')
+                file_name = os.path.basename(self.recv_path)
 
-                # 保存文件
+                # 保存文件,终止循环
                 with open(self.recv_path, 'wb') as file:
                     file.write(self.file_data)
-                    d_print('save file success!')
+                    d_print(f'save [{file_name}] success! recv time:{(end_time - start_time):.2f}s')
                     break
-
-        d_print(f'recv time:{(end_time - start_time):.2f}s')

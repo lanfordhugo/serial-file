@@ -24,6 +24,9 @@ CMD_REPLY_FILE_NAME = 0x52  # R
 # 指令枚举值,实际没有什么用，占位，方便函数统一处理
 VAL_REQUEST_FILE = 0xAA
 
+# 文件名长度
+MAX_FILE_NAME_LENGTH = 128
+
 
 def calc_checksum(arr_data):
     """

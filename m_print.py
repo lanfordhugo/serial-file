@@ -67,5 +67,5 @@ def progress_bar(progress, rate=0):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.{:03d}".format(milliseconds))
 
     sys.stdout.write('\r')
-    sys.stdout.write(f'{color}[{current_time}]Progress: [{progress:.2f}%][{rate:.2f}k/s]')
+    sys.stdout.write(f'{color}[{current_time}] Progress: [{progress:.2f}%][{rate:.2f}k/s]')
     sys.stdout.flush()

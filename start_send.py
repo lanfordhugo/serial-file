@@ -17,9 +17,9 @@ else:
 
         
 com = input('填写串口号，按回车键继续:\n')
-file_path= input('填写需要发送的文件路径，按回车键继续:\n')
+file_path = input('填写需要发送的文件路径，按回车键继续:\n')
 
-# com = 'com18'
+# com = 'com15'
 # file_path = './test.txt'
 
 

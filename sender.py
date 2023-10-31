@@ -37,7 +37,7 @@ class Sender:
 
     def wait_for_receiver_request_filesize(self):
         # 等待接收者请求文件信息
-        d_print('wait for receiver request')
+        d_print('wait for receiver request file_size')
         while True:
             cmd, data = read_frame(self.serial_port, frame_handle.format_size + 1)
             if data is None or cmd is None:
@@ -56,7 +56,7 @@ class Sender:
     def wait_for_receiver_request_filename(self):
         # 等待接收者请求文件名信息
         start_time = time.time()
-        d_print('wait for receiver request')
+        d_print('wait for receiver request file_name')
         while True:
             # 等待计时，等待最多5分钟，5分钟超过退出
             if time.time() - start_time > 300:
@@ -77,9 +77,11 @@ class Sender:
     def send_file_name(self, file_name):
         # 向接收端回复文件名
         b_file_name = file_name.encode('utf-8')
+        # 不足最大文件名长度的补0
+        b_file_name += b'\x00' * (frame_handle.MAX_FILE_NAME_LENGTH - len(b_file_name))
         packed_data = make_pack(frame_handle.CMD_REPLY_FILE_NAME, b_file_name)
-        d_print('file_bytes:', packed_data)
-        d_print('file_name:', file_name)
+        # d_print('file_bytes:', packed_data)
+        # d_print('file_name:', file_name)
         self.serial_port.write(packed_data)
     
     def send_file_size(self):
@@ -140,7 +142,7 @@ class Sender:
             if self.file_size == self.send_size:
                 print()
                 d_print('send file success')
-                self.serial_port.close()
+                # self.serial_port.close()
                 break
 
         d_print(f'send time:{(end_time - start_time):.2f}s')
