@@ -7,6 +7,7 @@
 
 from pathlib import Path
 from typing import Optional
+import time
 
 from ..config.settings import SerialConfig, TransferConfig
 from ..config.constants import PROBE_BAUDRATE, ProbeCommand
@@ -222,10 +223,32 @@ class FileTransferCLI:
                 # 创建探测管理器
                 probe_manager = ProbeManager(probe_serial)
                 
-                print("正在搜索接收设备...")
+                print("正在搜索接收设备(3s 周期探测，3 分钟超时)...")
                 
-                # 发送探测请求
-                response = probe_manager.send_probe_request()
+                # 按 3 秒周期重复探测，最长 3 分钟
+                PROBE_CYCLE = 3.0                       # 单次探测周期 (秒)
+                PROBE_TOTAL_TIMEOUT = 180.0             # 总超时 (秒)
+
+                start_time = time.time()
+                attempt = 0
+                response = None
+
+                max_attempts = int(PROBE_TOTAL_TIMEOUT // PROBE_CYCLE)
+
+                while attempt < max_attempts:
+                    attempt += 1
+                    response = probe_manager.send_probe_request()
+                    if response is not None:
+                        break  # 找到设备
+
+                    elapsed = time.time() - start_time
+                    remaining = int(PROBE_TOTAL_TIMEOUT - elapsed)
+                    if remaining <= 0:
+                        break
+
+                    print(f"⌛ 第 {attempt} 次探测未找到设备，剩余 {remaining}s，继续尝试...")
+                    # send_probe_request 内部已阻塞约 3s，这里不再额外 sleep，以免单元测试耗时
+
                 if response is None:
                     print("❌ 未找到接收设备，请检查:")
                     print("  1. 接收端是否已启动智能接收模式")

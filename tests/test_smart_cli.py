@@ -158,7 +158,8 @@ class TestSmartCLI:
         
         # 验证结果
         assert result is False
-        mock_probe_manager.send_probe_request.assert_called_once()
+        # 在3分钟重试逻辑下，应至少探测一次
+        assert mock_probe_manager.send_probe_request.call_count >= 1
     
     @patch('builtins.input')
     @patch('src.serial_file_transfer.cli.file_transfer.FileTransferCLI.get_user_input_port', return_value='COM1')

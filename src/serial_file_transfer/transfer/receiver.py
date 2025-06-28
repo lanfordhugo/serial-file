@@ -17,6 +17,7 @@ from ..core.frame_handler import FrameHandler
 from ..core.serial_manager import SerialManager
 from ..utils.logger import get_logger
 from ..utils.progress import TransferProgressTracker, progress_bar
+from ..utils.retry import retry_call
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,9 @@ class FileReceiver:
         self.file_size = 0
         self.recv_size = 0
         self.file_data = b''
+        self._file_handle = None  # 流式写入句柄
+        # 序号追踪
+        self._expected_seq: int = 0
     
     def init_receive_params(self, save_path: Union[str, Path]) -> None:
         """
@@ -111,7 +115,7 @@ class FileReceiver:
         try:
             # 读取回复
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port,
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 4  # 帧头+CRC+文件大小(4字节)
             )
             
@@ -141,7 +145,7 @@ class FileReceiver:
         try:
             # 读取回复
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port,
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + MAX_FILE_NAME_LENGTH  # 帧头+CRC+文件名
             )
             
@@ -197,7 +201,7 @@ class FileReceiver:
         try:
             # 读取数据包
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port,
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + self.config.max_data_length  # 帧头+CRC+最大数据长度
             )
             
@@ -208,9 +212,28 @@ class FileReceiver:
                 logger.error(f"收到错误命令: {hex(cmd)}")
                 return False
             
-            # 保存接收的数据
-            self.recv_size += len(data)
-            self.file_data += data
+            # 解析序号
+            seq_id = struct.unpack('<H', data[:2])[0]
+            payload = data[2:]
+
+            # 发送ACK/NACK
+            ack_cmd = SerialCommand.ACK if seq_id == self._expected_seq else SerialCommand.NACK
+            ack_frame = FrameHandler.pack_frame(ack_cmd, struct.pack('<H', seq_id))
+            if ack_frame:
+                self.serial_manager.write(ack_frame)
+
+            if ack_cmd == SerialCommand.NACK:
+                logger.warning(f"收到序号 {seq_id} 与预期 {self._expected_seq} 不符，发送NACK")
+                return False
+
+            # 序号符合，保存数据
+            self.recv_size += len(payload)
+
+            if self._file_handle is not None:
+                self._file_handle.write(payload)
+            else:
+                self.file_data += payload
+            self._expected_seq = (self._expected_seq + 1) & 0xFFFF
             return True
             
         except Exception as e:
@@ -241,6 +264,9 @@ class FileReceiver:
                     
                 time.sleep(0.1)
             
+            # 打开文件保存句柄
+            self._file_handle = self.save_path.open('wb')
+
             # 开始接收文件
             start_time = time.time()
             logger.info("开始接收文件...")
@@ -265,21 +291,17 @@ class FileReceiver:
                     recv_rate = (self.recv_size / elapsed_time / 1024) if elapsed_time > 0 else 0
                     progress_bar(progress_percent, recv_rate)
             
-            # 保存文件
-            if self.recv_size == self.file_size:
-                if self.config.show_progress:
-                    print()  # 换行
-                    
-                self._save_file()
-                elapsed_time = time.time() - start_time
-                logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒")
-                return True
-            else:
-                logger.error("文件接收不完整")
-                return False
-                
+            # 已写入磁盘，无需再次保存
+            if self._file_handle and not self._file_handle.closed:
+                self._file_handle.close()
+            elapsed_time = time.time() - start_time
+            logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒")
+            return True
         except Exception as e:
             logger.error(f"文件传输异常: {e}")
+            logger.error("文件接收不完整")
+            if self._file_handle and not self._file_handle.closed:
+                self._file_handle.close()
             return False
     
     def _save_file(self) -> bool:
@@ -290,6 +312,10 @@ class FileReceiver:
             成功返回True，失败返回False
         """
         try:
+            if self.save_path is None:
+                logger.error("保存路径未设置")
+                return False
+
             # 确保父目录存在
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
             
@@ -303,6 +329,13 @@ class FileReceiver:
         except Exception as e:
             logger.error(f"保存文件失败: {e}")
             return False
+
+    def __del__(self):
+        if self._file_handle and not self._file_handle.closed:
+            try:
+                self._file_handle.close()
+            except Exception:
+                pass
 
 
 # 为了保持向后兼容，提供原类名的别名

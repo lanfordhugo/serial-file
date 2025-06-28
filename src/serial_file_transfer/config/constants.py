@@ -21,6 +21,10 @@ class SerialCommand(IntEnum):
     REQUEST_DATA = 0x63         # 请求数据包 'c'
     SEND_DATA = 0x64           # 发送数据包 'd'
     
+    # 新增: 数据确认相关命令
+    ACK = 0x65                # 数据包确认 'e'
+    NACK = 0x66               # 数据包重传请求 'f'
+    
     # 文件名相关命令
     REQUEST_FILE_NAME = 0x51    # 请求文件名 'Q' 
     REPLY_FILE_NAME = 0x52      # 回复文件名 'R'

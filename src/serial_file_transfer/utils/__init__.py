@@ -7,9 +7,12 @@
 
 from .logger import get_logger, setup_logger
 from .progress import ProgressBar
+from .retry import retry_call, exponential_backoff
 
 __all__ = [
     "get_logger",
     "setup_logger", 
-    "ProgressBar"
+    "ProgressBar",
+    "retry_call",
+    "exponential_backoff"
 ] 

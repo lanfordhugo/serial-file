@@ -48,7 +48,9 @@ class TransferConfig:
     max_data_length: int = DEFAULT_MAX_DATA_LENGTH      # 单次传输最大数据长度
     request_timeout: int = DEFAULT_REQUEST_TIMEOUT      # 请求超时时间(秒)
     retry_count: int = DEFAULT_RETRY_COUNT              # 重试次数
+    backoff_base: float = 0.5                          # 指数退避基础秒数
     show_progress: bool = True                          # 是否显示进度
+    max_cache_size: int = 4 * 1024 * 1024              # 触发流式读取阈值(4MB)
     
     def __post_init__(self):
         """参数验证"""
@@ -57,4 +59,8 @@ class TransferConfig:
         if self.request_timeout <= 0:
             raise ValueError("request_timeout必须大于0")
         if self.retry_count < 0:
-            raise ValueError("retry_count不能为负数") 
+            raise ValueError("retry_count不能为负数")
+        if self.backoff_base <= 0:
+            raise ValueError("backoff_base必须大于0")
+        if self.max_cache_size <= 0:
+            raise ValueError("max_cache_size必须大于0") 

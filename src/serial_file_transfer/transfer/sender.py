@@ -9,7 +9,7 @@ import os
 import struct
 import time
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from ..config.constants import SerialCommand, VAL_REQUEST_FILE, MAX_FILE_NAME_LENGTH
 from ..config.settings import TransferConfig
@@ -17,6 +17,7 @@ from ..core.frame_handler import FrameHandler
 from ..core.serial_manager import SerialManager
 from ..utils.logger import get_logger
 from ..utils.progress import TransferProgressTracker, progress_bar
+from ..utils.retry import retry_call, exponential_backoff
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,10 @@ class FileSender:
         # 传输状态
         self.send_size = 0
         self.file_size = 0
-        self.file_data = b''
+        self.file_data: bytes | None = b''  # 小文件缓存；流式模式为空字节
+        self.file_path: Path | None = None   # 文件路径
+        self._file_handle = None             # 大文件流式读取句柄
+        self._seq_id: int = 0  # 数据包序号
         
         # 如果提供了文件路径，立即初始化
         if file_path:
@@ -71,13 +75,21 @@ class FileSender:
                 logger.error(f"路径不是文件: {file_path}")
                 return False
             
-            # 重置状态
             self.send_size = 0
             self.file_size = file_path.stat().st_size
-            
-            # 读取文件内容
-            with file_path.open('rb') as f:
-                self.file_data = f.read()
+            self.file_path = file_path
+
+            # 如果小于阈值，加载到内存；否则流式读取
+            if self.file_size <= self.config.max_cache_size:
+                with file_path.open('rb') as f:
+                    self.file_data = f.read()
+                    self._file_handle = None
+                logger.debug("小文件已缓存到内存")
+            else:
+                # 流式读取模式，保留文件句柄
+                self._file_handle = file_path.open('rb')
+                self.file_data = b''
+                logger.debug("启用流式读取模式")
             
             logger.info(f"已加载文件: {file_path.name}, 大小: {self.file_size / 1024:.2f} KB")
             return True
@@ -97,7 +109,19 @@ class FileSender:
         Returns:
             指定区间的文件数据
         """
-        return self.file_data[addr:addr + length]
+        if self.file_data is not None:
+            return self.file_data[addr:addr + length]
+
+        if self._file_handle is not None:
+            self._file_handle.seek(addr)
+            return self._file_handle.read(length)
+
+        # 兜底：重新打开文件一次性读取（不应发生）
+        if self.file_path and self.file_path.exists():
+            with self.file_path.open('rb') as f:
+                f.seek(addr)
+                return f.read(length)
+        return b''
     
     def wait_for_file_size_request(self) -> bool:
         """
@@ -117,7 +141,7 @@ class FileSender:
             
             # 读取命令
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port, 
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 1  # 帧头+CRC+数据
             )
             
@@ -152,7 +176,7 @@ class FileSender:
             
             # 读取命令
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port,
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 1  # 帧头+CRC+数据
             )
             
@@ -231,15 +255,61 @@ class FileSender:
             成功返回True，失败返回False
         """
         try:
-            # 获取数据
-            data = self.get_file_data(addr, length)
-            
-            # 打包并发送
-            frame = FrameHandler.pack_frame(SerialCommand.SEND_DATA, data)
-            if frame and self.serial_manager.write(frame):
+            seq_id = self._seq_id & 0xFFFF
+
+            # 获取数据并加入序号前缀
+            data_segment = self.get_file_data(addr, length)
+            payload = struct.pack('<H', seq_id) + data_segment
+
+            frame = FrameHandler.pack_frame(SerialCommand.SEND_DATA, payload)
+
+            if not frame:
+                logger.error("打包数据帧失败")
+                return False
+
+            def _write_and_wait_ack() -> bool:
+                # 发送数据
+                if not self.serial_manager.write(frame):
+                    return False
+
+                # 等待ACK
+                start_time = time.time()
+                port = self.serial_manager.port
+                if port is None:
+                    logger.error("串口未打开，无法等待ACK")
+                    return False
+
+                while time.time() - start_time < self.config.request_timeout:
+                    cmd, ack_data = FrameHandler.read_frame(port, 6 + 2)
+                    if cmd is None:
+                        continue
+                    if cmd == SerialCommand.ACK:
+                        recv_seq = struct.unpack('<H', cast(bytes, ack_data))[0]
+                        if recv_seq == seq_id:
+                            return True
+                        else:
+                            logger.debug(f"收到ACK序号不匹配: {recv_seq} != {seq_id}")
+                    elif cmd == SerialCommand.NACK:
+                        recv_seq = struct.unpack('<H', cast(bytes, ack_data))[0]
+                        if recv_seq == seq_id:
+                            logger.warning("收到NACK，准备重传…")
+                            return False  # 触发重试
+                # 超时未收到ACK
+                return False
+
+            result = retry_call(
+                _write_and_wait_ack,
+                max_retry=self.config.retry_count,
+                base_delay=self.config.backoff_base,
+                logger=logger,
+            )
+
+            if result:
+                # 仅在成功确认后增加send_size与序号
+                self._seq_id = (self._seq_id + 1) & 0xFFFF
                 return True
             else:
-                logger.error("发送数据包失败")
+                logger.error("数据包多次发送仍未确认，终止传输")
                 return False
                 
         except Exception as e:
@@ -256,7 +326,7 @@ class FileSender:
         try:
             # 读取数据请求
             cmd, data = FrameHandler.read_frame(
-                self.serial_manager.port,
+                self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 4 + 2  # 帧头+CRC+地址(4字节)+长度(2字节)
             )
             
@@ -268,7 +338,7 @@ class FileSender:
                 return True  # 继续等待
             
             # 解析请求地址和长度
-            addr, length = struct.unpack('<IH', data)
+            addr, length = struct.unpack('<IH', cast(bytes, data))
             
             # 验证请求有效性
             if addr + length > self.file_size:
@@ -338,6 +408,14 @@ class FileSender:
         except Exception as e:
             logger.error(f"文件传输异常: {e}")
             return False
+
+    def __del__(self):
+        """确保文件句柄关闭"""
+        if self._file_handle:
+            try:
+                self._file_handle.close()
+            except Exception:
+                pass
 
 
 # 为了保持向后兼容，提供原类名的别名

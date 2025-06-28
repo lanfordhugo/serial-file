@@ -18,6 +18,7 @@ from ..config.constants import (
     SWITCH_DELAY_MS,
     PROBE_PROTOCOL_VERSION
 )
+from ..config.constants import FRAME_HEADER_SIZE, FRAME_CRC_SIZE
 from ..config.settings import SerialConfig
 from ..core.serial_manager import SerialManager
 from ..core.frame_handler import FrameHandler
@@ -99,36 +100,48 @@ class ProbeManager:
             start_time = time.time()
             buffer = b''
             
+            HEADER_SIZE = FRAME_HEADER_SIZE  # 3 字节
+
             while time.time() - start_time < timeout:
-                # 读取数据到缓冲区
+                # 读取新数据并追加到缓冲区
                 new_data = self.serial_manager.read(1024)
                 if new_data:
                     buffer += new_data
-                
-                # 尝试解析数据帧
-                while len(buffer) >= 5:  # 最小帧长度
+
+                # 解析缓冲区中所有完整帧
+                while True:
+                    if len(buffer) < HEADER_SIZE + FRAME_CRC_SIZE:
+                        break  # 数据不足
+
+                    # 取头部，读取声明数据长度
                     try:
-                        unpacked = FrameHandler.unpack_frame(buffer)
-                        if unpacked is not None:
-                            cmd, data_len, data, crc = unpacked
-                            frame_len = 5 + data_len  # 头部3字节 + 数据 + 校验2字节
-                            
-                            if cmd == expected_cmd:
-                                # 移除已处理的数据
-                                buffer = buffer[frame_len:]
-                                return data
-                            else:
-                                # 不是期望的命令，移除这个帧继续处理
-                                buffer = buffer[frame_len:]
-                        else:
-                            # 无法解析完整帧，移除第一个字节继续尝试
-                            buffer = buffer[1:]
+                        cmd = buffer[0]
+                        data_len = int.from_bytes(buffer[1:3], 'little')
                     except Exception:
-                        # 解析失败，移除第一个字节继续尝试
+                        # 头部异常，丢弃 1 字节
                         buffer = buffer[1:]
-                
-                # 短暂睡眠避免占用过多CPU
-                time.sleep(0.01)
+                        continue
+
+                    frame_len = HEADER_SIZE + data_len + FRAME_CRC_SIZE
+
+                    if len(buffer) < frame_len:
+                        # 不够一个完整帧，继续读取
+                        break
+
+                    frame_bytes = buffer[:frame_len]
+                    buffer = buffer[frame_len:]
+
+                    unpacked = FrameHandler.unpack_frame(frame_bytes)
+                    if unpacked is None:
+                        # 解析失败，继续下一个帧
+                        continue
+
+                    cmd_parsed, _, data_parsed, _ = unpacked
+                    if cmd_parsed == expected_cmd:
+                        return data_parsed
+                    # 若不是期望命令，忽略继续循环
+
+                time.sleep(0.005)  # 避免忙循环
             
             logger.warning(f"接收探测帧超时: cmd={expected_cmd}, timeout={timeout}s")
             return None
@@ -438,7 +451,11 @@ class ProbeManager:
             
             # 验证会话ID
             if switch.session_id != self.session_id:
-                logger.error(f"波特率切换会话ID不匹配: {hex(switch.session_id)} != {hex(self.session_id)}")
+                logger.error(
+                    "波特率切换会话ID不匹配: %s != %s",
+                    hex(switch.session_id),
+                    hex(self.session_id) if self.session_id is not None else "None"
+                )
                 return False
             
             # 验证波特率
@@ -449,6 +466,7 @@ class ProbeManager:
             logger.info(f"收到波特率切换指令: {switch.new_baudrate}")
             
             # 发送切换确认
+            assert self.session_id is not None  # type: ignore[assert-type]
             ack = SwitchAckData(self.session_id)
             if not self._send_probe_frame(ProbeCommand.SWITCH_ACK, ack.pack()):
                 logger.error("发送波特率切换确认失败")
@@ -481,7 +499,14 @@ class ProbeManager:
             # 切换波特率
             # 注意：这里需要SerialManager支持动态波特率切换
             if hasattr(self.serial_manager, 'switch_baudrate'):
-                return self.serial_manager.switch_baudrate(new_baudrate)
+                # 保证返回布尔值，兼容测试中的Mock对象
+                try:
+                    result = self.serial_manager.switch_baudrate(new_baudrate)
+                except Exception as e:
+                    logger.error(f"串口动态切换波特率异常: {e}")
+                    return False
+
+                return bool(result)
             else:
                 # 如果不支持动态切换，需要重新配置串口
                 logger.warning("串口管理器不支持动态波特率切换")

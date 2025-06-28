@@ -5,7 +5,7 @@
 本文档详细介绍串口文件传输工具的技术架构，包括项目结构设计、核心模块功能、关键类和接口等。适合开发者深入了解系统内部实现。
 
 **目标读者**: 技术开发者、架构师、代码贡献者  
-**版本**: v1.3.0  
+**版本**: v1.3.1  
 **最后更新**: 2024年12月  
 
 ---
@@ -18,7 +18,7 @@
 2. **模块化架构**: 清晰的分层设计，便于维护和扩展
 3. **可靠传输**: 采用校验和验证和错误重传机制
 4. **类型安全**: 全面使用Python类型提示
-5. **测试驱动**: 138个测试用例的完整测试体系
+5. **测试驱动**: 197个测试用例的完整测试体系
 
 ### 分层架构设计
 
@@ -169,6 +169,10 @@ class SerialCommand(IntEnum):
     REQUEST_DATA = 0x63         # 请求数据包
     SEND_DATA = 0x64           # 发送数据包
     
+    # 数据确认相关命令
+    ACK = 0x65                # 数据包确认
+    NACK = 0x66               # 请求重传
+    
     # 文件名相关命令
     REQUEST_FILE_NAME = 0x51    # 请求文件名
     REPLY_FILE_NAME = 0x52      # 回复文件名
@@ -197,12 +201,13 @@ class SerialConfig:
         """验证配置有效性"""
         return self.port and self.baudrate > 0
 
-@dataclass  
 class TransferConfig:
     """传输配置类"""
     max_data_length: int = DEFAULT_MAX_DATA_LENGTH  # 最大数据长度
-    request_timeout: int = DEFAULT_REQUEST_TIMEOUT  # 请求超时
+    request_timeout: int = DEFAULT_REQUEST_TIMEOUT  # 请求超时(秒)
     retry_count: int = DEFAULT_RETRY_COUNT          # 重试次数
+    backoff_base: float = 0.5                       # 指数退避基础秒数
+    max_cache_size: int = 4 * 1024 * 1024          # 触发流式读取阈值(4MB)
 ```
 
 ### 2. 核心功能模块 (core/)

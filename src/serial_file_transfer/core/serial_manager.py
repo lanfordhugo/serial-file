@@ -88,6 +88,7 @@ class SerialManager:
                 logger.error("串口未打开，无法写入数据")
                 return False
                 
+            assert self._port is not None  # type: ignore[assert-type]
             bytes_written = self._port.write(data)
             return bytes_written == len(data)
             
@@ -110,6 +111,7 @@ class SerialManager:
                 logger.error("串口未打开，无法读取数据")
                 return b''
                 
+            assert self._port is not None  # type: ignore[assert-type]
             return self._port.read(size)
             
         except Exception as e:
@@ -181,4 +183,36 @@ class SerialManager:
     
     def __del__(self):
         """析构函数，确保串口被正确关闭"""
-        self.close() 
+        self.close()
+
+    # ----------------  动态波特率切换支持 ----------------
+    def switch_baudrate(self, new_baudrate: int) -> bool:
+        """动态切换当前已打开串口的波特率
+
+        Args:
+            new_baudrate: 目标波特率
+
+        Returns:
+            切换成功返回 True，否则 False
+        """
+        try:
+            if not self.is_open:
+                logger.error("串口未打开，无法切换波特率")
+                return False
+
+            # 此处 _port 一定不为 None，因为 is_open 已验证
+            assert self._port is not None  # type: ignore[assert-type]
+
+            # 若已是目标波特率则直接返回
+            if self._port.baudrate == new_baudrate:  # type: ignore[attr-defined]
+                logger.debug(f"波特率已是 {new_baudrate}，无需切换")
+                return True
+
+            logger.info(f"切换波特率: {self._port.baudrate} -> {new_baudrate}")  # type: ignore[attr-defined]
+            self._port.baudrate = new_baudrate  # type: ignore[attr-defined]
+            # 同步更新配置，避免后续 reopen 使用旧值
+            self.config.baudrate = new_baudrate
+            return True
+        except Exception as e:
+            logger.error(f"动态切换波特率失败: {e}")
+            return False 
