@@ -15,9 +15,9 @@
 
 | 项目指标 | 数值 | 说明 |
 |----------|------|------|
-| **总测试用例数** | 138个 | 覆盖所有核心功能 |
-| **测试文件数** | 7个 | 按模块组织测试 |
-| **平均执行时间** | 0.64秒 | 快速反馈循环 |
+| **总测试用例数** | 186个 | 覆盖所有核心功能 |
+| **测试文件数** | 10个 | 按模块组织测试 |
+| **平均执行时间** | 0.54秒 | 快速反馈循环 |
 | **测试覆盖率** | 90%+ | 核心模块高覆盖 |
 
 ### 测试质量等级
@@ -31,6 +31,10 @@
 | **test_frame_handler.py** | 7个 | 数据帧处理：打包解包、校验和验证 | ⭐⭐⭐⭐ |
 | **test_file_transfer_cli.py** | 14个 | CLI接口：用户交互、路径检测、配置管理 | ⭐⭐⭐⭐ |
 | **test_main.py** | 27个 | 主程序：应用逻辑、命令行解析、异常处理 | ⭐⭐⭐⭐ |
+| **test_probe_structures.py** | 13个 | 探测数据结构：序列化、反序列化、验证 | ⭐⭐⭐⭐⭐ |
+| **test_probe_manager.py** | 14个 | 探测管理器：协商流程、状态机、错误处理 | ⭐⭐⭐⭐⭐ |
+| **test_probe_capability.py** | 14个 | 能力协商：波特率选择、参数协商、切换同步 | ⭐⭐⭐⭐⭐ |
+| **test_smart_cli.py** | 7个 | 智能CLI：智能模式集成、用户体验 | ⭐⭐⭐⭐ |
 
 ---
 
@@ -78,14 +82,17 @@ pytest tests/ -k "large_file" -v
 ```bash
 ====== test session starts ======================================
 platform win32 -- Python 3.11.8, pytest-8.4.1
-collected 138 items
+collected 186 items
 
 tests/test_checksum.py::test_calculate_checksum_empty_data PASSED
 tests/test_serial_manager.py::test_init PASSED
 tests/test_sender.py::test_init_without_file PASSED
+tests/test_probe_structures.py::test_probe_request_pack_unpack PASSED
+tests/test_probe_manager.py::test_send_probe_request_success PASSED
+tests/test_probe_capability.py::test_negotiate_capability_success PASSED
 ...
 
-====== 138 passed in 0.64s ======================================
+====== 186 passed in 0.54s ======================================
 ```
 
 ---
@@ -112,9 +119,10 @@ tests/test_sender.py::test_init_without_file PASSED
 
 该测试体系具有以下特点：
 
-✅ **完整覆盖**：138个测试用例覆盖所有核心功能  
+✅ **完整覆盖**：186个测试用例覆盖所有核心功能  
 ✅ **分层测试**：从单元到集成的完整测试金字塔  
 ✅ **Mock技术**：先进的Mock技术解耦硬件依赖  
+✅ **智能协议测试**：48个新增测试覆盖智能探测协议  
 ✅ **教学价值**：详细的中文注释和最佳实践示例  
 
 该测试框架不仅保证了代码质量，更是学习Python测试技术的宝贵资源。 

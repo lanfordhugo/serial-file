@@ -42,10 +42,12 @@ class TestSerialFileTransferApp:
         app.show_menu()
         
         captured = capsys.readouterr()
-        assert "1. 发送文件/文件夹" in captured.out
-        assert "2. 接收文件" in captured.out
-        assert "3. 查看帮助" in captured.out
-        assert "4. 退出程序" in captured.out
+        assert "1. 🚀 智能发送文件/文件夹 (推荐)" in captured.out
+        assert "2. 📡 智能接收文件 (推荐)" in captured.out
+        assert "3. 发送文件/文件夹 (手动模式)" in captured.out
+        assert "4. 接收文件 (手动模式)" in captured.out
+        assert "5. 查看帮助" in captured.out
+        assert "6. 退出程序" in captured.out
     
     @patch('builtins.input')
     def test_get_user_choice_valid(self, mock_input):
@@ -60,10 +62,10 @@ class TestSerialFileTransferApp:
     def test_get_user_choice_invalid_then_valid(self, mock_input):
         """测试无效选择后重试"""
         app = SerialFileTransferApp()
-        mock_input.side_effect = ["5", "0", "1"]
+        mock_input.side_effect = ["7", "0", "5"]
         
         choice = app.get_user_choice()
-        assert choice == "1"
+        assert choice == "5"
         assert mock_input.call_count == 3
     
     @patch('builtins.input')
@@ -73,7 +75,7 @@ class TestSerialFileTransferApp:
         mock_input.side_effect = KeyboardInterrupt()
         
         choice = app.get_user_choice()
-        assert choice == "4"
+        assert choice == "6"
     
     @patch('builtins.input')
     def test_show_help(self, mock_input, capsys):

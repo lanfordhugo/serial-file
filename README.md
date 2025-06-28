@@ -8,9 +8,9 @@
 
 - **智能路径检测**: 自动识别文件/文件夹，选择相应传输方式
 - **可靠传输协议**: 校验和验证和错误重传机制  
-- **全面测试覆盖**: 138个测试用例保障代码质量
+- **全面测试覆盖**: 186个测试用例保障代码质量
 - **统一CLI接口**: 简单易用的命令行界面
-- **智能探测模式**: 自动设备发现和参数协商 (v1.3.0+)
+- **智能探测模式**: 自动设备发现和参数协商，一键传输
 
 ---
 
@@ -23,11 +23,15 @@
 ```python
 from serial_file_transfer.cli.file_transfer import FileTransferCLI
 
-# 发送（自动检测路径类型）
-success = FileTransferCLI.send()
+# 智能模式发送（推荐：自动探测和协商）
+success = FileTransferCLI.smart_send()
 
-# 接收
-success = FileTransferCLI.receive()
+# 智能模式接收（推荐：自动响应和配置）
+success = FileTransferCLI.smart_receive()
+
+# 手动模式（兼容传统使用方式）
+success = FileTransferCLI.send()      # 手动发送
+success = FileTransferCLI.receive()   # 手动接收
 ```
 
 ---
@@ -93,7 +97,7 @@ src/serial_file_transfer/
 
 ### ✅ 质量保障
 
-- 138个测试用例
+- 186个测试用例
 - 90%+ 测试覆盖率
 - 完整的Mock测试
 
@@ -119,12 +123,13 @@ pytest tests/ --cov=src/serial_file_transfer --cov-report=html
 
 ## 版本信息
 
-### 当前版本：v1.3.0 (开发中)
+### 当前版本：v1.3.0 ✨
 
-- 🚀 智能探测协商协议
-- 📚 完整文档体系重构  
-- ⚡ 性能优化
-- 🔧 向后兼容保证
+- 🚀 **智能探测协商协议**: 7步自动协商流程，一键传输
+- 📡 **自动设备发现**: 115200波特率探测，自动参数协商
+- ⚡ **动态波特率切换**: 支持高达1728000波特率的智能切换
+- 🧪 **全面测试覆盖**: 186个测试用例，48个新增探测协议测试
+- 🔧 **完全向后兼容**: 智能模式与手动模式并存
 
 ### 稳定版本：v1.2.0
 

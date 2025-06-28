@@ -50,10 +50,12 @@ class SerialFileTransferApp:
     def show_menu(self):
         """显示主菜单"""
         print("请选择操作：")
-        print("1. 发送文件/文件夹")
-        print("2. 接收文件")
-        print("3. 查看帮助")
-        print("4. 退出程序")
+        print("1. 🚀 智能发送文件/文件夹 (推荐)")
+        print("2. 📡 智能接收文件 (推荐)")
+        print("3. 发送文件/文件夹 (手动模式)")
+        print("4. 接收文件 (手动模式)")
+        print("5. 查看帮助")
+        print("6. 退出程序")
         print()
     
     def show_help(self):
@@ -88,22 +90,56 @@ class SerialFileTransferApp:
         """获取用户选择"""
         while True:
             try:
-                choice = input("请输入选择 (1-4): ").strip()
-                if choice in ['1', '2', '3', '4']:
+                choice = input("请输入选择 (1-6): ").strip()
+                if choice in ['1', '2', '3', '4', '5', '6']:
                     return choice
                 else:
-                    print("❌ 无效选择，请输入 1-4 之间的数字")
+                    print("❌ 无效选择，请输入 1-6 之间的数字")
             except KeyboardInterrupt:
                 print("\n\n👋 用户取消操作，程序退出")
-                return '4'
+                return '6'
             except EOFError:
-                return '4'
+                return '6'
+    
+    def handle_smart_send(self):
+        """处理智能发送操作"""
+        try:
+            print("\n" + "=" * 30)
+            print("🚀 智能发送文件/文件夹")
+            print("=" * 30)
+            success = FileTransferCLI.smart_send()
+            if success:
+                print("\n✅ 智能发送操作完成！")
+            else:
+                print("\n❌ 智能发送操作失败！")
+        except Exception as e:
+            logger.error(f"智能发送操作异常: {e}")
+            print(f"\n💥 智能发送操作异常: {e}")
+        finally:
+            print()
+    
+    def handle_smart_receive(self):
+        """处理智能接收操作"""
+        try:
+            print("\n" + "=" * 30)
+            print("📡 智能接收文件")
+            print("=" * 30)
+            success = FileTransferCLI.smart_receive()
+            if success:
+                print("\n✅ 智能接收操作完成！")
+            else:
+                print("\n❌ 智能接收操作失败！")
+        except Exception as e:
+            logger.error(f"智能接收操作异常: {e}")
+            print(f"\n💥 智能接收操作异常: {e}")
+        finally:
+            print()
     
     def handle_send(self):
         """处理发送操作"""
         try:
             print("\n" + "=" * 30)
-            print("📤 发送文件/文件夹")
+            print("📤 发送文件/文件夹 (手动模式)")
             print("=" * 30)
             success = FileTransferCLI.send()
             if success:
@@ -120,7 +156,7 @@ class SerialFileTransferApp:
         """处理接收操作"""
         try:
             print("\n" + "=" * 30)
-            print("📥 接收文件")
+            print("📥 接收文件 (手动模式)")
             print("=" * 30)
             success = FileTransferCLI.receive()
             if success:
@@ -142,12 +178,16 @@ class SerialFileTransferApp:
             choice = self.get_user_choice()
             
             if choice == '1':
-                self.handle_send()
+                self.handle_smart_send()
             elif choice == '2':
-                self.handle_receive()
+                self.handle_smart_receive()
             elif choice == '3':
-                self.show_help()
+                self.handle_send()
             elif choice == '4':
+                self.handle_receive()
+            elif choice == '5':
+                self.show_help()
+            elif choice == '6':
                 print("\n👋 感谢使用，程序退出！")
                 self.running = False
         
