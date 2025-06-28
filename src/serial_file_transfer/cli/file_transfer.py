@@ -29,14 +29,45 @@ class FileTransferCLI:
         SerialManager.print_available_ports()
     
     @staticmethod
-    def get_user_input_port() -> str:
-        """获取用户输入的串口号"""
-        FileTransferCLI.show_available_ports()
+    def get_user_input_port() -> Optional[str]:
+        """获取用户选择的串口号"""
+        # 获取可用串口列表
+        ports = SerialManager.list_available_ports()
+        
+        # 如果没有找到串口，返回None
+        if not ports:
+            print("❌ 没有找到可用的串口。")
+            print("   请检查:")
+            print("   1. 串口设备是否已连接")
+            print("   2. 串口驱动是否已安装")
+            print("   3. 是否有足够的权限访问串口")
+            return None
+        
+        # 显示可用串口列表
+        print("可用的串口列表:")
+        for i, port in enumerate(ports, 1):
+            print(f"  {i}. {port['device']} - {port['description']}")
+        
+        # 让用户选择
         while True:
-            port = input('请输入串口号（如COM1）: ').strip()
-            if port:
-                return port
-            print("串口号不能为空，请重新输入。")
+            try:
+                choice = input(f"\n请选择串口号 (1-{len(ports)}): ").strip()
+                if not choice:
+                    print("请输入有效的选择。")
+                    continue
+                    
+                index = int(choice) - 1
+                if 0 <= index < len(ports):
+                    selected_port = ports[index]['device']
+                    print(f"✅ 已选择: {selected_port}")
+                    return selected_port
+                else:
+                    print(f"请输入1到{len(ports)}之间的数字。")
+            except ValueError:
+                print("请输入有效的数字。")
+            except KeyboardInterrupt:
+                print("\n用户取消选择")
+                return None
     
     @staticmethod
     def get_user_input_source_path() -> str:
@@ -103,6 +134,9 @@ class FileTransferCLI:
             
             # 获取用户输入
             port = FileTransferCLI.get_user_input_port()
+            if port is None:
+                return False
+                
             source_path = FileTransferCLI.get_user_input_source_path()
             baudrate = FileTransferCLI.get_baudrate()
             
@@ -159,8 +193,11 @@ class FileTransferCLI:
             print("=== 串口文件传输 - 智能发送 ===")
             
             # 获取用户输入
-            source_path = FileTransferCLI.get_user_input_source_path()
             port = FileTransferCLI.get_user_input_port()
+            if port is None:
+                return False
+                
+            source_path = FileTransferCLI.get_user_input_source_path()
             
             # 检测路径类型和统计信息
             path_type = FileTransferCLI._detect_path_type(source_path)
@@ -265,6 +302,9 @@ class FileTransferCLI:
             
             # 获取用户输入
             port = FileTransferCLI.get_user_input_port()
+            if port is None:
+                return False
+                
             save_path = FileTransferCLI.get_user_input_save_path()
             
             print("正在等待发送端连接...")
@@ -381,6 +421,9 @@ class FileTransferCLI:
             
             # 获取用户输入
             port = FileTransferCLI.get_user_input_port()
+            if port is None:
+                return False
+                
             save_path = FileTransferCLI.get_user_input_save_path()
             baudrate = FileTransferCLI.get_baudrate()
             
