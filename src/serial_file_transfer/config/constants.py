@@ -14,16 +14,16 @@ class SerialCommand(IntEnum):
     """串口通信命令字枚举"""
     
     # 文件大小相关命令
-    REQUEST_FILE_SIZE: int = 0x61    # 请求文件大小 'a'
-    REPLY_FILE_SIZE: int = 0x62      # 回复文件大小 'b'
+    REQUEST_FILE_SIZE = 0x61    # 请求文件大小 'a'
+    REPLY_FILE_SIZE = 0x62      # 回复文件大小 'b'
     
     # 数据传输相关命令  
-    REQUEST_DATA: int = 0x63         # 请求数据包 'c'
-    SEND_DATA: int = 0x64           # 发送数据包 'd'
+    REQUEST_DATA = 0x63         # 请求数据包 'c'
+    SEND_DATA = 0x64           # 发送数据包 'd'
     
     # 文件名相关命令
-    REQUEST_FILE_NAME: int = 0x51    # 请求文件名 'Q' 
-    REPLY_FILE_NAME: int = 0x52      # 回复文件名 'R'
+    REQUEST_FILE_NAME = 0x51    # 请求文件名 'Q' 
+    REPLY_FILE_NAME = 0x52      # 回复文件名 'R'
 
 
 # 数据帧格式定义
