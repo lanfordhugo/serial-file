@@ -33,7 +33,7 @@ class TestSerialFileTransferApp:
         app.show_banner()
 
         captured = capsys.readouterr()
-        assert "串口文件传输工具 v1.1.0" in captured.out
+        assert "串口文件传输工具 v1.4.0" in captured.out
         assert "基于串口通信的可靠文件传输工具" in captured.out
 
     def test_show_menu(self, capsys):
@@ -42,12 +42,10 @@ class TestSerialFileTransferApp:
         app.show_menu()
 
         captured = capsys.readouterr()
-        assert "1. 🚀 智能发送文件/文件夹 (推荐)" in captured.out
-        assert "2. 📡 智能接收文件 (推荐)" in captured.out
-        assert "3. 发送文件/文件夹 (手动模式)" in captured.out
-        assert "4. 接收文件 (手动模式)" in captured.out
-        assert "5. 查看帮助" in captured.out
-        assert "6. 退出程序" in captured.out
+        assert "1. 🚀 智能发送文件/文件夹" in captured.out
+        assert "2. 📡 智能接收文件" in captured.out
+        assert "3. 查看帮助" in captured.out
+        assert "4. 退出程序" in captured.out
 
     @patch("builtins.input")
     def test_get_user_choice_valid(self, mock_input):
@@ -62,10 +60,10 @@ class TestSerialFileTransferApp:
     def test_get_user_choice_invalid_then_valid(self, mock_input):
         """测试无效选择后重试"""
         app = SerialFileTransferApp()
-        mock_input.side_effect = ["7", "0", "5"]
+        mock_input.side_effect = ["7", "0", "3"]
 
         choice = app.get_user_choice()
-        assert choice == "5"
+        assert choice == "3"
         assert mock_input.call_count == 3
 
     @patch("builtins.input")
@@ -75,7 +73,7 @@ class TestSerialFileTransferApp:
         mock_input.side_effect = KeyboardInterrupt()
 
         choice = app.get_user_choice()
-        assert choice == "6"
+        assert choice == "4"
 
     @patch("builtins.input")
     def test_show_help(self, mock_input, capsys):
@@ -87,72 +85,12 @@ class TestSerialFileTransferApp:
 
         captured = capsys.readouterr()
         assert "帮助信息" in captured.out
-        assert "📁 发送文件/文件夹" in captured.out
-        assert "📥 接收文件" in captured.out
-        assert "🔧 使用步骤" in captured.out
+        assert "智能传输模式" in captured.out
+        assert "智能发送" in captured.out
+        assert "智能接收" in captured.out
+        assert "使用步骤" in captured.out
 
-    @patch("main.FileTransferCLI.send")
-    def test_handle_send_success(self, mock_send, capsys):
-        """测试发送操作成功"""
-        app = SerialFileTransferApp()
-        mock_send.return_value = True
 
-        app.handle_send()
-
-        captured = capsys.readouterr()
-        assert "📤 发送文件/文件夹" in captured.out
-        assert "✅ 发送操作完成" in captured.out
-        mock_send.assert_called_once()
-
-    @patch("main.FileTransferCLI.send")
-    def test_handle_send_failure(self, mock_send, capsys):
-        """测试发送操作失败"""
-        app = SerialFileTransferApp()
-        mock_send.return_value = False
-
-        app.handle_send()
-
-        captured = capsys.readouterr()
-        assert "❌ 发送操作失败" in captured.out
-        mock_send.assert_called_once()
-
-    @patch("main.FileTransferCLI.send")
-    def test_handle_send_exception(self, mock_send, capsys):
-        """测试发送操作异常"""
-        app = SerialFileTransferApp()
-        mock_send.side_effect = Exception("测试异常")
-
-        app.handle_send()
-
-        captured = capsys.readouterr()
-        assert "💥 发送操作异常" in captured.out
-        assert "测试异常" in captured.out
-        mock_send.assert_called_once()
-
-    @patch("main.FileTransferCLI.receive")
-    def test_handle_receive_success(self, mock_receive, capsys):
-        """测试接收操作成功"""
-        app = SerialFileTransferApp()
-        mock_receive.return_value = True
-
-        app.handle_receive()
-
-        captured = capsys.readouterr()
-        assert "📥 接收文件" in captured.out
-        assert "✅ 接收操作完成" in captured.out
-        mock_receive.assert_called_once()
-
-    @patch("main.FileTransferCLI.receive")
-    def test_handle_receive_failure(self, mock_receive, capsys):
-        """测试接收操作失败"""
-        app = SerialFileTransferApp()
-        mock_receive.return_value = False
-
-        app.handle_receive()
-
-        captured = capsys.readouterr()
-        assert "❌ 接收操作失败" in captured.out
-        mock_receive.assert_called_once()
 
 
 class TestCommandLineParser:
@@ -166,35 +104,21 @@ class TestCommandLineParser:
         assert "main" in parser.prog or "pytest" in parser.prog
 
     def test_parser_no_args(self):
-        """测试无参数解析"""
+        """测试无参数解析（智能模式下直接运行交互界面）"""
         parser = create_parser()
         args = parser.parse_args([])
+        # 智能模式下不再有send/receive参数
+        assert args is not None
 
-        assert not args.send
-        assert not args.receive
-
-    def test_parser_send_arg(self):
-        """测试发送参数"""
-        parser = create_parser()
-        args = parser.parse_args(["--send"])
-
-        assert args.send is True
-        assert args.receive is False
-
-    def test_parser_receive_arg(self):
-        """测试接收参数"""
-        parser = create_parser()
-        args = parser.parse_args(["--receive"])
-
-        assert args.receive is True
-        assert args.send is False
-
-    def test_parser_mutually_exclusive(self):
-        """测试互斥参数"""
+    def test_parser_version(self, capsys):
+        """测试版本参数"""
         parser = create_parser()
 
         with pytest.raises(SystemExit):
-            parser.parse_args(["--send", "--receive"])
+            parser.parse_args(["--version"])
+
+        captured = capsys.readouterr()
+        assert "串口文件传输工具 v1.4.0" in captured.out
 
 
 class TestMainFunction:
@@ -203,7 +127,7 @@ class TestMainFunction:
     @patch("main.SerialFileTransferApp")
     @patch("sys.argv", ["main.py"])
     def test_main_interactive_mode(self, mock_app_class):
-        """测试交互式模式"""
+        """测试交互式模式（智能模式下的唯一模式）"""
         mock_app = Mock()
         mock_app_class.return_value = mock_app
 
@@ -211,30 +135,6 @@ class TestMainFunction:
 
         mock_app_class.assert_called_once()
         mock_app.run_interactive.assert_called_once()
-
-    @patch("main.SerialFileTransferApp")
-    @patch("sys.argv", ["main.py", "--send"])
-    def test_main_send_mode(self, mock_app_class):
-        """测试发送模式"""
-        mock_app = Mock()
-        mock_app_class.return_value = mock_app
-
-        main.main()
-
-        mock_app_class.assert_called_once()
-        mock_app.run_send_mode.assert_called_once()
-
-    @patch("main.SerialFileTransferApp")
-    @patch("sys.argv", ["main.py", "--receive"])
-    def test_main_receive_mode(self, mock_app_class):
-        """测试接收模式"""
-        mock_app = Mock()
-        mock_app_class.return_value = mock_app
-
-        main.main()
-
-        mock_app_class.assert_called_once()
-        mock_app.run_receive_mode.assert_called_once()
 
     @patch("sys.argv", ["main.py"])
     @patch("main.SerialFileTransferApp")

@@ -23,15 +23,11 @@
 ```python
 from serial_file_transfer.cli.file_transfer import FileTransferCLI
 
-# 智能模式发送（推荐：自动探测和协商）
+# 智能发送（自动探测和协商）
 success = FileTransferCLI.smart_send()
 
-# 智能模式接收（推荐：自动响应和配置）
+# 智能接收（自动响应和配置）
 success = FileTransferCLI.smart_receive()
-
-# 手动模式（兼容传统使用方式）
-success = FileTransferCLI.send()      # 手动发送
-success = FileTransferCLI.receive()   # 手动接收
 ```
 
 ---

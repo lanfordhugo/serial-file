@@ -109,123 +109,13 @@ class TestFileTransferCLI:
         assert result == str(test_file)
         assert mock_input.call_count == 2
 
-    @patch("builtins.input")
-    def test_get_baudrate_default(self, mock_input):
-        """测试默认波特率"""
-        mock_input.return_value = ""
-
+    def test_get_baudrate_smart_mode(self):
+        """测试智能模式下的波特率获取"""
         result = FileTransferCLI.get_baudrate()
-
-        assert result == 1728000
-
-    @patch("builtins.input")
-    def test_get_baudrate_custom(self, mock_input):
-        """测试自定义波特率"""
-        mock_input.return_value = "115200"
-
-        result = FileTransferCLI.get_baudrate()
-
+        # 智能模式下使用固定的探测波特率115200
         assert result == 115200
 
-    @patch("builtins.input")
-    def test_get_baudrate_invalid_fallback(self, mock_input):
-        """测试无效波特率回退到默认值"""
-        mock_input.return_value = "invalid"
 
-        result = FileTransferCLI.get_baudrate()
-
-        assert result == 1728000
-
-    @patch("builtins.input")
-    @patch(
-        "serial_file_transfer.cli.file_transfer.FileTransferCLI.get_user_input_port",
-        return_value="COM1",
-    )
-    @patch("serial_file_transfer.cli.file_transfer.SerialManager")
-    @patch("serial_file_transfer.cli.file_transfer.FileSender")
-    def test_send_file_success(
-        self, mock_sender, mock_serial_manager, mock_get_port, mock_input, tmp_path
-    ):
-        """测试文件发送成功"""
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("test content")
-        mock_input.side_effect = [str(test_file), "", ""]
-        mock_serial_instance = MagicMock()
-        mock_serial_manager.return_value.__enter__.return_value = mock_serial_instance
-        mock_sender_instance = MagicMock()
-        mock_sender_instance.start_transfer.return_value = True
-        mock_sender.return_value = mock_sender_instance
-        result = FileTransferCLI.send()
-        assert result is True
-        mock_sender_instance.start_transfer.assert_called_once()
-
-    @patch("builtins.input")
-    @patch(
-        "serial_file_transfer.cli.file_transfer.FileTransferCLI.get_user_input_port",
-        return_value="COM1",
-    )
-    @patch("serial_file_transfer.cli.file_transfer.SerialManager")
-    @patch("serial_file_transfer.cli.file_transfer.SenderFileManager")
-    def test_send_folder_success(
-        self,
-        mock_file_manager,
-        mock_serial_manager,
-        mock_get_port,
-        mock_input,
-        tmp_path,
-    ):
-        test_folder = tmp_path / "test_folder"
-        test_folder.mkdir()
-        (test_folder / "file1.txt").write_text("1")
-        mock_input.side_effect = [str(test_folder), "", ""]
-        mock_serial_instance = MagicMock()
-        mock_serial_manager.return_value.__enter__.return_value = mock_serial_instance
-        mock_manager_instance = MagicMock()
-        mock_manager_instance.start_batch_send.return_value = True
-        mock_file_manager.return_value = mock_manager_instance
-        result = FileTransferCLI.send()
-        assert result is True
-        mock_manager_instance.start_batch_send.assert_called_once()
-
-    @patch("builtins.input")
-    @patch(
-        "serial_file_transfer.cli.file_transfer.FileTransferCLI.get_user_input_port",
-        return_value="COM1",
-    )
-    @patch("serial_file_transfer.cli.file_transfer.SerialManager")
-    @patch("serial_file_transfer.cli.file_transfer.FileReceiver")
-    def test_receive_single_file_success(
-        self, mock_receiver, mock_serial_manager, mock_get_port, mock_input
-    ):
-        mock_input.side_effect = ["/path/to/save.txt", "", "1", ""]
-        mock_serial_instance = MagicMock()
-        mock_serial_manager.return_value.__enter__.return_value = mock_serial_instance
-        mock_receiver_instance = MagicMock()
-        mock_receiver_instance.start_transfer.return_value = True
-        mock_receiver.return_value = mock_receiver_instance
-        result = FileTransferCLI.receive()
-        assert result is True
-        mock_receiver_instance.start_transfer.assert_called_once()
-
-    @patch("builtins.input")
-    @patch(
-        "serial_file_transfer.cli.file_transfer.FileTransferCLI.get_user_input_port",
-        return_value="COM1",
-    )
-    @patch("serial_file_transfer.cli.file_transfer.SerialManager")
-    @patch("serial_file_transfer.cli.file_transfer.ReceiverFileManager")
-    def test_receive_batch_files_success(
-        self, mock_file_manager, mock_serial_manager, mock_get_port, mock_input
-    ):
-        mock_input.side_effect = ["/path/to/folder", "", "2", ""]
-        mock_serial_instance = MagicMock()
-        mock_serial_manager.return_value.__enter__.return_value = mock_serial_instance
-        mock_manager_instance = MagicMock()
-        mock_manager_instance.start_batch_receive.return_value = True
-        mock_file_manager.return_value = mock_manager_instance
-        result = FileTransferCLI.receive()
-        assert result is True
-        mock_manager_instance.start_batch_receive.assert_called_once()
 
 
 if __name__ == "__main__":

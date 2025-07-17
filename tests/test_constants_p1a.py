@@ -29,8 +29,15 @@ class TestP1AChunkSizeCalculation:
     def test_calculate_recommended_chunk_size_higher_baudrate(self):
         """测试高于映射表中最高波特率的情况"""
         # 测试超高波特率，应该使用最大值
+        # 注意：3000000已在映射表中，所以直接返回映射值8192
         result = calculate_recommended_chunk_size(3000000)  # 3Mbps
-        expected = min(8192 * 2, MAX_CHUNK_SIZE)  # 基于最高波特率翻倍但不超过最大值
+        expected = 8192  # 直接从映射表获取
+        assert result == expected
+
+        # 测试真正超出映射表的波特率
+        result = calculate_recommended_chunk_size(7000000)  # 7Mbps，超出映射表
+        # 最接近的是6000000(8192)，由于7000000更高，所以翻倍但不超过最大值
+        expected = min(8192 * 2, MAX_CHUNK_SIZE)  # min(16384, 16384) = 16384
         assert result == expected
 
     def test_calculate_recommended_chunk_size_intermediate_baudrate(self):

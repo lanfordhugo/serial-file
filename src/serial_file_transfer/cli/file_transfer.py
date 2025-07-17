@@ -131,24 +131,19 @@ class FileTransferCLI:
 
     @staticmethod
     def get_baudrate() -> int:
-        """获取波特率"""
+        """获取波特率（智能模式下用于探测阶段）"""
         # 如果有临时参数，使用临时参数（非交互模式）
         if FileTransferCLI._temp_baudrate:
             print(f"✅ 使用指定波特率: {FileTransferCLI._temp_baudrate}")
             return FileTransferCLI._temp_baudrate
-            
-        # 交互模式
-        default_baudrate = 1728000
-        baudrate_input = input(f"请输入波特率（默认{default_baudrate}）: ").strip()
 
-        if not baudrate_input:
-            return default_baudrate
+        # 智能模式下使用固定的探测波特率
+        from ..config.constants import PROBE_BAUDRATE
+        default_baudrate = PROBE_BAUDRATE  # 115200
 
-        try:
-            return int(baudrate_input)
-        except ValueError:
-            print(f"波特率格式错误，使用默认值: {default_baudrate}")
-            return default_baudrate
+        print(f"✅ 智能模式使用探测波特率: {default_baudrate}")
+        print("   （实际传输波特率将通过协商确定）")
+        return default_baudrate
 
     @staticmethod
     def _detect_path_type(path: str) -> str:
@@ -168,72 +163,6 @@ class FileTransferCLI:
             return "folder"
         else:
             raise ValueError(f"无效的路径类型: {path}")
-
-    @staticmethod
-    def send() -> bool:
-        """发送文件或文件夹的统一CLI入口"""
-        try:
-            print("=== 串口文件传输 - 发送 ===")
-
-            # 获取用户输入
-            port = FileTransferCLI.get_user_input_port()
-            if port is None:
-                return False
-
-            source_path = FileTransferCLI.get_user_input_source_path()
-            baudrate = FileTransferCLI.get_baudrate()
-
-            # 检测路径类型
-            path_type = FileTransferCLI._detect_path_type(source_path)
-
-            # 创建配置
-            serial_config = SerialConfig(port=port, baudrate=baudrate, timeout=0.5)
-            transfer_config = TransferConfig(max_data_length=10 * 1024)  # 10KB
-
-            # 创建串口管理器
-            with SerialManager(serial_config) as serial_manager:
-                if path_type == "file":
-                    # 单文件发送
-                    print(f"检测到文件，开始发送: {source_path}")
-                    sender = FileSender(serial_manager, source_path, transfer_config)
-
-                    if sender.start_transfer():
-                        print("文件发送成功！")
-                        return True
-                    else:
-                        print("文件发送失败！")
-                        return False
-
-                elif path_type == "folder":
-                    # 文件夹发送
-                    print(f"检测到文件夹，开始批量发送: {source_path}")
-                    file_manager = SenderFileManager(
-                        source_path, serial_manager, transfer_config
-                    )
-
-                    if file_manager.start_batch_send():
-                        print("批量文件发送成功！")
-                        return True
-                    else:
-                        print("批量文件发送失败！")
-                        return False
-                else:
-                    print(f"未知路径类型: {path_type}")
-                    return False
-
-        except KeyboardInterrupt:
-            print("\n用户取消操作")
-            return False
-        except Exception as e:
-            logger.error(f"发送时发生异常: {e}")
-            print(f"发送失败: {e}")
-            return False
-        finally:
-            # 避免在测试环境中阻塞，检查是否在测试环境中运行
-            import sys
-
-            if "pytest" not in sys.modules:
-                input("按回车键退出...")
 
     @staticmethod
     def smart_send() -> bool:
@@ -498,76 +427,3 @@ class FileTransferCLI:
             if "pytest" not in sys.modules:
                 input("按回车键退出...")
 
-    @staticmethod
-    def receive() -> bool:
-        """接收文件或文件夹的统一CLI入口"""
-        try:
-            print("=== 串口文件传输 - 接收 ===")
-
-            # 获取用户输入
-            port = FileTransferCLI.get_user_input_port()
-            if port is None:
-                return False
-
-            save_path = FileTransferCLI.get_user_input_save_path()
-            baudrate = FileTransferCLI.get_baudrate()
-
-            # 询问接收模式
-            print("\n请选择接收模式:")
-            print("1. 单文件接收")
-            print("2. 批量文件接收")
-
-            while True:
-                mode = input("请输入选择（1或2）: ").strip()
-                if mode in ["1", "2"]:
-                    break
-                print("请输入有效选择（1或2）")
-
-            # 创建配置
-            serial_config = SerialConfig(port=port, baudrate=baudrate, timeout=0.5)
-            transfer_config = TransferConfig(max_data_length=10 * 1024)  # 10KB
-
-            # 创建串口管理器
-            with SerialManager(serial_config) as serial_manager:
-                if mode == "1":
-                    # 单文件接收
-                    print(f"开始接收文件，保存到: {save_path}")
-                    receiver = FileReceiver(serial_manager, save_path, transfer_config)
-
-                    if receiver.start_transfer():
-                        print("文件接收成功！")
-                        return True
-                    else:
-                        print("文件接收失败！")
-                        return False
-
-                elif mode == "2":
-                    # 批量文件接收
-                    print(f"开始批量接收文件，保存到: {save_path}")
-                    file_manager = ReceiverFileManager(
-                        save_path, serial_manager, transfer_config
-                    )
-
-                    if file_manager.start_batch_receive():
-                        print("批量文件接收成功！")
-                        return True
-                    else:
-                        print("批量文件接收失败！")
-                        return False
-                else:
-                    print(f"未知接收模式: {mode}")
-                    return False
-
-        except KeyboardInterrupt:
-            print("\n用户取消操作")
-            return False
-        except Exception as e:
-            logger.error(f"接收时发生异常: {e}")
-            print(f"接收失败: {e}")
-            return False
-        finally:
-            # 避免在测试环境中阻塞，检查是否在测试环境中运行
-            import sys
-
-            if "pytest" not in sys.modules:
-                input("按回车键退出...")

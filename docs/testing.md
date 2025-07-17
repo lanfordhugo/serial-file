@@ -4,8 +4,28 @@
 
 本文档详细介绍串口文件传输工具的测试体系，包括测试架构、测试用例分析、pytest框架使用、Mock测试技术等。
 
-**目标读者**: 测试工程师、Python开发者  
-**版本**: v1.4.0  
+**目标读者**: 测试工程师、Python开发者
+**版本**: v1.4.0
+
+## ⚡ 快速开始
+
+### 运行单元测试（默认）
+```bash
+# 直接使用pytest（推荐）
+pytest
+
+# 或指定测试目录
+pytest tests/ --ignore=tests/integration
+```
+
+### 运行集成测试（需要硬件）
+```bash
+# 使用专门的集成测试脚本
+python run_integration_tests.py
+
+# 或直接运行集成测试目录
+pytest tests/integration/ -v
+```
 
 ---
 

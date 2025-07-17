@@ -59,7 +59,18 @@ class ProbeManager:
         self.negotiated_chunk_size: Optional[int] = None
 
         # 支持的波特率列表（按优先级排序）
-        self.supported_baudrates = [1728000, 921600, 460800, 230400, 115200]
+        # 现代整数波特率 + 传统兼容波特率
+        self.supported_baudrates = [
+            6000000,  # 6 Mbps - 极高速
+            4000000,  # 4 Mbps - 超高速  
+            3000000,  # 3 Mbps - 高速
+            2000000,  # 2 Mbps - 现代整数波特率
+            1728000,  # 1.728 Mbps - 高性能兼容
+            921600,   # 921.6 kbps - 标准高速
+            460800,   # 460.8 kbps - 中等速度
+            230400,   # 230.4 kbps - 稳定选择
+            115200    # 115.2 kbps - 最大兼容(传统基准)
+        ]
 
     def _generate_session_id(self) -> int:
         """生成新的会话ID"""
