@@ -25,7 +25,7 @@ def main():
     print("支持单文件接收或批量文件接收")
     print("程序会询问您选择接收模式")
     print()
-    
+
     try:
         success = FileTransferCLI.receive()
         if success:
@@ -37,4 +37,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

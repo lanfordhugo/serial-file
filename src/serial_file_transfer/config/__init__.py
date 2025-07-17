@@ -17,8 +17,7 @@ __all__ = [
     "FRAME_HEADER_SIZE",
     "FRAME_CRC_SIZE",
     "FRAME_FORMAT_SIZE",
-    
     # 配置
     "SerialConfig",
-    "TransferConfig"
-] 
+    "TransferConfig",
+]

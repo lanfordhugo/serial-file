@@ -25,9 +25,4 @@ from .transfer.sender import FileSender
 from .transfer.receiver import FileReceiver
 from .transfer.file_manager import SenderFileManager, ReceiverFileManager
 
-__all__ = [
-    "FileSender",
-    "FileReceiver", 
-    "SenderFileManager",
-    "ReceiverFileManager"
-] 
+__all__ = ["FileSender", "FileReceiver", "SenderFileManager", "ReceiverFileManager"]

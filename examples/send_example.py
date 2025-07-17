@@ -25,7 +25,7 @@ def main():
     print("支持发送单个文件或整个文件夹")
     print("程序会自动检测路径类型并选择相应的传输方式")
     print()
-    
+
     try:
         success = FileTransferCLI.send()
         if success:
@@ -37,4 +37,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()

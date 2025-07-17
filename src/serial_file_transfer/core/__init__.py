@@ -9,8 +9,4 @@ from .frame_handler import FrameHandler
 from .checksum import calculate_checksum
 from .serial_manager import SerialManager
 
-__all__ = [
-    "FrameHandler",
-    "calculate_checksum", 
-    "SerialManager"
-] 
+__all__ = ["FrameHandler", "calculate_checksum", "SerialManager"]

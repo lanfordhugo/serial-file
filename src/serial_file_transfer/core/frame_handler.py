@@ -12,10 +12,10 @@ from typing import Optional, Tuple, Union
 from ..config.constants import (
     SerialCommand,
     FRAME_HEADER_FORMAT,
-    FRAME_CRC_FORMAT, 
+    FRAME_CRC_FORMAT,
     FRAME_HEADER_SIZE,
     FRAME_CRC_SIZE,
-    FRAME_FORMAT_SIZE
+    FRAME_FORMAT_SIZE,
 )
 from .checksum import calculate_checksum
 from ..utils.logger import get_logger
@@ -25,21 +25,21 @@ logger = get_logger(__name__)
 
 class FrameHandler:
     """数据帧处理器"""
-    
+
     @staticmethod
     def pack_frame(cmd: Union[SerialCommand, int], data: bytes) -> Optional[bytes]:
         """
         将命令和数据打包成数据帧
-        
+
         数据帧格式：| 命令字(1B) | 数据长度(2B) | 数据内容(NB) | 校验和(2B) |
-        
+
         Args:
             cmd: 命令字，可以是SerialCommand枚举或整数
             data: 要发送的数据，bytes类型
-            
+
         Returns:
             打包后的数据帧，失败时返回None
-            
+
         Examples:
             >>> handler = FrameHandler()
             >>> frame = handler.pack_frame(SerialCommand.REQUEST_FILE_SIZE, b'test')
@@ -49,38 +49,38 @@ class FrameHandler:
         if data is None:
             logger.error("数据为空，无法计算校验和")
             return None
-            
+
         try:
             # 计算校验和
             crc = calculate_checksum(data)
-            
+
             # 获取数据长度
             data_len = len(data)
-            
+
             # 打包数据帧：头部 + 数据 + 校验和
             packed_frame = (
-                struct.pack(FRAME_HEADER_FORMAT, int(cmd), data_len) + 
-                data + 
-                struct.pack(FRAME_CRC_FORMAT, crc)
+                struct.pack(FRAME_HEADER_FORMAT, int(cmd), data_len)
+                + data
+                + struct.pack(FRAME_CRC_FORMAT, crc)
             )
-            
+
             return packed_frame
-            
+
         except Exception as e:
             logger.error(f"打包数据帧失败: {e}")
             return None
-    
-    @staticmethod 
+
+    @staticmethod
     def unpack_frame(frame_data: bytes) -> Optional[Tuple[int, int, bytes, int]]:
         """
         解析数据帧
-        
+
         Args:
             frame_data: 接收到的数据帧
-            
+
         Returns:
             元组(命令字, 数据长度, 数据内容, 校验和)，失败时返回None
-            
+
         Examples:
             >>> handler = FrameHandler()
             >>> result = handler.unpack_frame(packed_frame)
@@ -90,71 +90,103 @@ class FrameHandler:
         try:
             # 检查数据帧最小长度
             if len(frame_data) < FRAME_FORMAT_SIZE:
-                logger.debug(f'数据长度不足一帧: {len(frame_data)}')
+                logger.debug(f"数据长度不足一帧: {len(frame_data)}")
                 return None
-            
+
             # 解析头部：命令字和数据长度
             header = frame_data[:FRAME_HEADER_SIZE]
             cmd, data_len = struct.unpack(FRAME_HEADER_FORMAT, header)
-            
+
             # 检查数据长度是否匹配
             actual_data_len = len(frame_data) - FRAME_HEADER_SIZE - FRAME_CRC_SIZE
             if data_len != actual_data_len:
-                logger.error(
-                    f'数据长度不匹配: 声明长度={data_len}, 实际长度={actual_data_len}'
-                )
+                logger.error(f"数据长度不匹配: 声明长度={data_len}, 实际长度={actual_data_len}")
                 return None
-            
+
             # 提取数据部分
             data_start = FRAME_HEADER_SIZE
             data_end = data_start + data_len
             data = frame_data[data_start:data_end]
-            
+
             # 解析校验和
             crc_start = data_end
             crc_end = crc_start + FRAME_CRC_SIZE
-            received_crc = struct.unpack(FRAME_CRC_FORMAT, frame_data[crc_start:crc_end])[0]
-            
+            received_crc = struct.unpack(
+                FRAME_CRC_FORMAT, frame_data[crc_start:crc_end]
+            )[0]
+
             # 验证校验和
             calculated_crc = calculate_checksum(data)
             if received_crc != calculated_crc:
-                logger.error(
-                    f'校验和错误: 接收={hex(received_crc)}, 计算={hex(calculated_crc)}'
-                )
+                logger.error(f"校验和错误: 接收={hex(received_crc)}, 计算={hex(calculated_crc)}")
                 return None
-            
+
             return cmd, data_len, data, received_crc
-            
+
         except Exception as e:
             logger.error(f"解析数据帧失败: {e}")
             return None
-    
+
     @staticmethod
-    def read_frame(port: serial.Serial, size: int) -> Tuple[Optional[int], Optional[bytes]]:
+    def read_frame(
+        port: serial.Serial, size: int
+    ) -> Tuple[Optional[int], Optional[bytes]]:
         """
         从串口读取指定长度的数据帧并解析
-        
+
         Args:
             port: 串口对象
             size: 要读取的字节数
-            
+
         Returns:
             元组(命令字, 数据内容)，失败时返回(None, None)
         """
         try:
-            # 从串口读取数据
-            read_data = port.read(size)
-            if len(read_data) == 0:
+            # 1. 先读取帧头，确保拿到完整的命令字与数据长度
+            header_bytes = port.read(FRAME_HEADER_SIZE)
+            if len(header_bytes) < FRAME_HEADER_SIZE:
+                # 未读取到足够的头部字节
                 return None, None
-            
-            # 解析数据帧
-            unpacked = FrameHandler.unpack_frame(read_data)
+
+            # 若为bytearray，显式转换为 bytes
+            header_bytes = bytes(header_bytes)
+
+            try:
+                cmd, data_len = struct.unpack(FRAME_HEADER_FORMAT, header_bytes)
+            except struct.error as e:
+                logger.error(f"解析帧头失败: {e}")
+                return None, None
+
+            # 2. 根据声明的数据长度继续读取 数据 + CRC
+            remaining_len = data_len + FRAME_CRC_SIZE
+            body_bytes = b""
+
+            # 按 timeout 累积读取，直到拿到完整帧或串口超时返回空
+            while len(body_bytes) < remaining_len:
+                chunk = port.read(remaining_len - len(body_bytes))
+                if not chunk:
+                    # 串口 read 超时返回空字节，说明本帧已读完但长度不足
+                    break
+                if isinstance(chunk, bytearray):
+                    chunk = bytes(chunk)
+                body_bytes += chunk
+
+            if len(body_bytes) < remaining_len:
+                logger.debug(
+                    f"读取帧体不足: 期望={remaining_len} 实际={len(body_bytes)}，忽略本帧等待下一帧"
+                )
+                return None, None
+
+            # 3. 转换为bytes防止bytearray导致类型错误
+            full_frame = bytes(header_bytes) + bytes(body_bytes)
+
+            unpacked = FrameHandler.unpack_frame(full_frame)
             if unpacked is None:
                 return None, None
-            
-            cmd, _, data, _ = unpacked
+
+            _, _, data, _ = unpacked
             return cmd, data
-            
+
         except Exception as e:
             logger.error(f"读取数据帧失败: {e}")
             return None, None
@@ -173,4 +205,4 @@ def unpack_data(packed_data: bytes) -> Optional[Tuple[int, int, bytes, int]]:
 
 def read_frame(port: serial.Serial, size: int) -> Tuple[Optional[int], Optional[bytes]]:
     """向后兼容的函数别名"""
-    return FrameHandler.read_frame(port, size) 
+    return FrameHandler.read_frame(port, size)

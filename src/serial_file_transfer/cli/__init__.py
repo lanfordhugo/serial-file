@@ -7,6 +7,4 @@
 
 from .file_transfer import FileTransferCLI
 
-__all__ = [
-    "FileTransferCLI"
-] 
+__all__ = ["FileTransferCLI"]

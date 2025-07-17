@@ -36,9 +36,18 @@ class DummySerialPort:
         return len(data)
 
     def read(self, size: int) -> bytes:  # noqa: D401
-        if not self.to_read:
+        if not self.to_read or size <= 0:
             return b""
-        return self.to_read.pop(0)
+        # 从队列首元素读取指定字节数，支持按需拆分帧
+        first = self.to_read[0]
+        chunk = first[:size]
+        # 更新剩余未读取部分
+        remainder = first[size:]
+        if remainder:
+            self.to_read[0] = remainder
+        else:
+            self.to_read.pop(0)
+        return chunk
 
     @property
     def is_open(self):  # noqa: D401
@@ -48,7 +57,7 @@ class DummySerialPort:
 def test_ack_frame_pack_unpack():
     """ACK 帧可正确打包并解析"""
     seq = 123
-    payload = struct.pack('<H', seq)
+    payload = struct.pack("<H", seq)
     frame = FrameHandler.pack_frame(SerialCommand.ACK, payload)
     assert frame is not None
     unpacked = FrameHandler.unpack_frame(frame)
@@ -56,7 +65,7 @@ def test_ack_frame_pack_unpack():
     cmd, length, data, crc = unpacked
     assert cmd == SerialCommand.ACK
     assert length == 2
-    assert struct.unpack('<H', data)[0] == seq
+    assert struct.unpack("<H", data)[0] == seq
 
 
 def test_sender_waits_for_ack_and_retries():
@@ -78,7 +87,7 @@ def test_sender_waits_for_ack_and_retries():
     # 在第一次发送后不回 ACK，让其重试一次
     # 第二次预置 ACK 响应
     def inject_ack(seq):
-        ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, struct.pack('<H', seq))
+        ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, struct.pack("<H", seq))
         port.to_read.append(ack_frame)
 
     # 在重试之前插入 ACK
@@ -103,7 +112,7 @@ def test_receiver_sends_ack():
 
     # 模拟 sender 发送的数据包 seq=0, payload=b"DATA"
     seq = 0
-    payload = struct.pack('<H', seq) + b"DATA"
+    payload = struct.pack("<H", seq) + b"DATA"
     frame = FrameHandler.pack_frame(SerialCommand.SEND_DATA, payload)
     port.to_read.append(frame)
 
@@ -114,4 +123,4 @@ def test_receiver_sends_ack():
     assert port.written, "Receiver 未写入 ACK"
     ack_unpacked = FrameHandler.unpack_frame(port.written[0])
     assert ack_unpacked is not None
-    assert ack_unpacked[0] == SerialCommand.ACK 
+    assert ack_unpacked[0] == SerialCommand.ACK

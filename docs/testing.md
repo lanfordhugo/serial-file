@@ -5,7 +5,7 @@
 本文档详细介绍串口文件传输工具的测试体系，包括测试架构、测试用例分析、pytest框架使用、Mock测试技术等。
 
 **目标读者**: 测试工程师、Python开发者  
-**版本**: v1.3.0  
+**版本**: v1.4.0  
 
 ---
 
@@ -15,9 +15,9 @@
 
 | 项目指标 | 数值 | 说明 |
 |----------|------|------|
-| **总测试用例数** | 186个 | 覆盖所有核心功能 |
-| **测试文件数** | 10个 | 按模块组织测试 |
-| **平均执行时间** | 0.54秒 | 快速反馈循环 |
+| **总测试用例数** | 251个 | 覆盖所有核心功能 |
+| **测试文件数** | 13个 | 按模块组织测试 |
+| **平均执行时间** | 0.60秒 | 快速反馈循环 |
 | **测试覆盖率** | 90%+ | 核心模块高覆盖 |
 
 ### 测试质量等级
@@ -82,7 +82,7 @@ pytest tests/ -k "large_file" -v
 ```bash
 ====== test session starts ======================================
 platform win32 -- Python 3.11.8, pytest-8.4.1
-collected 186 items
+collected 251 items
 
 tests/test_checksum.py::test_calculate_checksum_empty_data PASSED
 tests/test_serial_manager.py::test_init PASSED
@@ -92,7 +92,7 @@ tests/test_probe_manager.py::test_send_probe_request_success PASSED
 tests/test_probe_capability.py::test_negotiate_capability_success PASSED
 ...
 
-====== 186 passed in 0.54s ======================================
+====== 251 passed in 0.60s ======================================
 ```
 
 ---
@@ -119,7 +119,7 @@ tests/test_probe_capability.py::test_negotiate_capability_success PASSED
 
 该测试体系具有以下特点：
 
-✅ **完整覆盖**：186个测试用例覆盖所有核心功能  
+✅ **完整覆盖**：251个测试用例覆盖所有核心功能  
 ✅ **分层测试**：从单元到集成的完整测试金字塔  
 ✅ **Mock技术**：先进的Mock技术解耦硬件依赖  
 ✅ **智能协议测试**：48个新增测试覆盖智能探测协议  

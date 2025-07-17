@@ -4,8 +4,8 @@
 
 本文档详细描述了串口文件传输工具的通信协议，包括基础文件传输协议和智能探测协商协议。协议设计基于可靠性、简洁性和易扩展性原则。
 
-**版本**: v1.3.0  
-**最后更新**: 2024年12月  
+**版本**: v1.4.0  
+**最后更新**: 2025年6月  
 **适用范围**: 串口文件传输工具的所有通信场景  
 
 ---
@@ -129,6 +129,8 @@ graph TB
 | **REPLY_FILE_SIZE** | 0x62 | 回复文件大小 | 文件大小 (4字节，小端序) |
 | **REQUEST_DATA** | 0x63 | 请求数据块 | 地址(4字节) + 长度(2字节) |
 | **SEND_DATA** | 0x64 | 发送数据块 | 实际文件数据 |
+| **ACK** | 0x65 | 数据包确认 | 序号(2字节) |
+| **NACK** | 0x66 | 请求重传 | 序号(2字节) |
 | **REQUEST_FILE_NAME** | 0x51 | 请求文件名 | 无数据 |
 | **REPLY_FILE_NAME** | 0x52 | 回复文件名 | UTF-8编码文件名 (最大128字节) |
 
@@ -350,8 +352,43 @@ class CapabilityNego:
     file_count: int         # 4字节，文件数量
     total_size: int         # 8字节，总文件大小
     selected_baudrate: int  # 4字节，选择的波特率
+    chunk_size: int         # 4字节，协商的数据块大小
     
-    # 总长度: 21字节
+    # 总长度: 25字节
+```
+
+#### 块大小一致性机制 (P1-A)
+
+能力协商成功后，`negotiated_chunk_size` 将传递至数据传输层，确保发送端和接收端使用一致的块大小进行文件传输：
+
+**传递流程**:
+
+1. **协商阶段**: 发送端在 `CAPABILITY_NEGO` 帧中包含建议的 `chunk_size`
+2. **确认阶段**: 接收端在 `CAPABILITY_ACK` 帧中确认接受的块大小
+3. **配置传递**: 协商成功的 `negotiated_chunk_size` 通过 `TransferConfig.update_chunk_size()` 更新到传输配置
+4. **数据层应用**: `FileSender` 和 `FileReceiver` 使用 `config.get_effective_chunk_size()` 获取协商的块大小
+
+**NACK回退机制**:
+
+- 当接收端请求的数据长度超过发送端的 `max_data_length` 时，发送端发送NACK帧
+- NACK帧包含发送端建议的块大小：`struct.pack('<HH', seq_id, suggested_length)`
+- 接收端收到NACK后自动调整 `config.max_data_length` 并重试请求
+
+```python
+# 发送端NACK处理示例
+if request_length > self.config.max_data_length:
+    nack_payload = struct.pack('<HH', seq_id, self.config.max_data_length)
+    nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_payload)
+    self.serial_manager.write(nack_frame)
+    logger.debug(f"NACK len>{self.config.max_data_length}")
+    return True  # 继续等待，不发送数据
+
+# 接收端NACK处理示例
+if cmd == SerialCommand.NACK:
+    seq, suggested_length = struct.unpack("<HH", data[:4])
+    logger.warning(f"收到 NACK，调整块长 {suggested_length}")
+    self.config.max_data_length = suggested_length
+    return False  # 触发重试
 ```
 
 ### 智能模式状态机

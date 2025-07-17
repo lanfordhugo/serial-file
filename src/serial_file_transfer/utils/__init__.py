@@ -11,8 +11,8 @@ from .retry import retry_call, exponential_backoff
 
 __all__ = [
     "get_logger",
-    "setup_logger", 
+    "setup_logger",
     "ProgressBar",
     "retry_call",
-    "exponential_backoff"
-] 
+    "exponential_backoff",
+]
