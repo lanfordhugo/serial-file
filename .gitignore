@@ -1,12 +1,12 @@
-# Byte-compiled / optimized / DLL files
+# Python缓存文件 / Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
 
 # C extensions
 *.so
 
-# Distribution / packaging
+# 分发和打包 / Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -20,6 +20,7 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
@@ -36,7 +37,7 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
+# 单元测试覆盖率 / Unit test / coverage reports
 htmlcov/
 .tox/
 .nox/
@@ -47,6 +48,7 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
 cover/
@@ -134,7 +136,7 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# 虚拟环境 / Environments
 .env
 .envrc
 .venv
@@ -168,6 +170,13 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -182,9 +191,9 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#  and can be added to the global gitignore or merged into this file. However, if you prefer,
 #  you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
@@ -205,3 +214,20 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 操作系统 / Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 项目特定 / Project specific
+*.exe
+*.zip
+recv/
+temp/
+logs/
+.cursor/
