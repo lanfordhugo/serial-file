@@ -398,8 +398,14 @@ class FileTransferCLI:
             with SerialManager(final_config) as transfer_serial:
                 print("开始接收文件...")
 
-                # 根据协商的根路径信息自动创建接收目录
+                # 获取协商信息
                 negotiated_root_path = getattr(probe_manager, "negotiated_root_path", "")
+                negotiated_transfer_mode = getattr(probe_manager, "negotiated_transfer_mode", 1)
+                negotiated_file_count = getattr(probe_manager, "negotiated_file_count", 1)
+
+                print(f"📋 传输信息: 模式={negotiated_transfer_mode}, 文件数={negotiated_file_count}")
+
+                # 根据协商的根路径信息自动创建接收目录
                 if negotiated_root_path:
                     # 如果有根路径信息，在接收目录下创建对应的子目录
                     final_save_path = Path(save_path) / negotiated_root_path
@@ -408,16 +414,33 @@ class FileTransferCLI:
                 else:
                     final_save_path = Path(save_path)
 
-                # 尝试单文件接收，如果失败再尝试批量接收
-                # 这里可以根据协商时的传输模式来决定
-                receiver = FileReceiver(transfer_serial, str(final_save_path), transfer_config)
+                # 根据协商的传输模式智能选择接收方式
+                if negotiated_transfer_mode == 1:  # 单文件模式
+                    print("📄 单文件接收模式")
 
-                if receiver.start_transfer():
-                    print("🎉 文件接收成功！")
-                    return True
-                else:
-                    # 尝试批量接收
-                    print("尝试批量接收模式...")
+                    # 对于单文件，生成默认的文件路径
+                    # 单文件传输协议中，文件名会在传输过程中自动处理
+                    import time
+                    timestamp = int(time.time())
+                    default_filename = f"received_file_{timestamp}"
+                    file_save_path = final_save_path / default_filename
+
+                    # 确保父目录存在
+                    file_save_path.parent.mkdir(parents=True, exist_ok=True)
+                    print(f"📄 准备接收到: {file_save_path}")
+
+                    # 初始化接收器并开始传输
+                    receiver = FileReceiver(transfer_serial, str(file_save_path), transfer_config)
+
+                    if receiver.start_transfer():
+                        print("🎉 单文件接收成功！")
+                        return True
+                    else:
+                        print("❌ 单文件接收失败！")
+                        return False
+
+                else:  # 批量文件模式 (transfer_mode == 2)
+                    print("📁 批量文件接收模式")
                     file_manager = ReceiverFileManager(
                         str(final_save_path), transfer_serial, transfer_config
                     )
@@ -426,7 +449,7 @@ class FileTransferCLI:
                         print("🎉 批量文件接收成功！")
                         return True
                     else:
-                        print("❌ 文件接收失败！")
+                        print("❌ 批量文件接收失败！")
                         return False
 
         except KeyboardInterrupt:

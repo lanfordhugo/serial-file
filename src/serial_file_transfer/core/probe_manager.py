@@ -386,6 +386,9 @@ class ProbeManager:
             self.target_baudrate = capability.selected_baudrate
             # 保存根路径信息，用于接收端自动创建目录结构
             self.negotiated_root_path = capability.root_path
+            # 保存传输模式信息，用于智能判断处理方式
+            self.negotiated_transfer_mode = capability.transfer_mode
+            self.negotiated_file_count = capability.file_count
 
             # 检查波特率是否支持
             if capability.selected_baudrate not in self.supported_baudrates:
