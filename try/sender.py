@@ -1,4 +1,3 @@
-import argparse
 import serial
 from ymodem.Socket import ModemSocket
 import time
@@ -19,18 +18,20 @@ def create_serial_port(port, baudrate, timeout=1):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="使用 YMODEM 协议通过串口发送文件。")
-    parser.add_argument(
-        "-p", "--port", required=True, help="串口名称，例如 COM1 或 /dev/ttyUSB0"
-    )
-    parser.add_argument(
-        "-b", "--baudrate", type=int, default=1728000, help="波特率 (默认: 1728000)"
-    )
-    parser.add_argument("-f", "--file", required=True, help="要发送的文件路径")
+    # 固定配置参数
+    PORT = "COM5"  # 发送端使用COM5
+    BAUDRATE = 1728000  # 使用172800波特率
 
-    args = parser.parse_args()
+    # 要发送的测试文件 - 你可以修改这个路径
+    TEST_FILE = "testfile\sample.txt"  # 默认测试文件，你可以修改为实际要发送的文件路径
 
-    ser = create_serial_port(args.port, args.baudrate)
+    print(f"YMODEM文件发送器 - 固定配置")
+    print(f"串口: {PORT}")
+    print(f"波特率: {BAUDRATE}")
+    print(f"发送文件: {TEST_FILE}")
+    print("-" * 50)
+
+    ser = create_serial_port(PORT, BAUDRATE)
     if not ser:
         return
 
@@ -45,7 +46,7 @@ def main():
 
     modem = ModemSocket(getc, putc)
 
-    file_path = args.file
+    file_path = TEST_FILE
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"文件未找到: {file_path}")

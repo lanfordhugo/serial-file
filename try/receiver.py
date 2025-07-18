@@ -1,4 +1,3 @@
-import argparse
 import serial
 from ymodem.Socket import ModemSocket
 import time
@@ -19,27 +18,27 @@ def create_serial_port(port, baudrate, timeout=1):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="使用 YMODEM 协议通过串口接收文件。")
-    parser.add_argument(
-        "-p", "--port", required=True, help="串口名称，例如 COM1 或 /dev/ttyUSB0"
-    )
-    parser.add_argument(
-        "-b", "--baudrate", type=int, default=1728000, help="波特率 (默认: 1728000)"
-    )
-    parser.add_argument("-d", "--dest", default=".", help="文件保存的目标目录 (默认: 当前目录)")
+    # 固定配置参数
+    PORT = "COM7"  # 接收端使用COM7
+    BAUDRATE = 1728000  # 使用172800波特率
+    DEST_DIR = "./received_files"  # 接收文件保存目录
 
-    args = parser.parse_args()
+    print(f"YMODEM文件接收器 - 固定配置")
+    print(f"串口: {PORT}")
+    print(f"波特率: {BAUDRATE}")
+    print(f"保存目录: {DEST_DIR}")
+    print("-" * 50)
 
     # 确保目标目录存在
-    if not os.path.isdir(args.dest):
+    if not os.path.isdir(DEST_DIR):
         try:
-            os.makedirs(args.dest)
-            print(f"创建目标目录: {args.dest}")
+            os.makedirs(DEST_DIR)
+            print(f"创建目标目录: {DEST_DIR}")
         except OSError as e:
-            print(f"错误: 无法创建目标目录 {args.dest} - {e}")
+            print(f"错误: 无法创建目标目录 {DEST_DIR} - {e}")
             return
 
-    ser = create_serial_port(args.port, args.baudrate)
+    ser = create_serial_port(PORT, BAUDRATE)
     if not ser:
         return
 
@@ -54,7 +53,7 @@ def main():
 
     modem = ModemSocket(getc, putc)
 
-    print(f"准备在 {args.port} 监听文件接收...")
+    print(f"准备在 {PORT} 监听文件接收...")
     try:
         start_time = time.time()
         # 记录上次回调的时间和字节数，用于速率计算
@@ -74,14 +73,14 @@ def main():
             last['bytes'] = received_bytes
 
         received_filenames = modem.recv(
-            args.dest,
+            DEST_DIR,
             callback=progress_callback,
         )
         end_time = time.time()
 
         # 类型安全处理返回值
         if isinstance(received_filenames, list) and received_filenames:
-            received_file_path = os.path.join(args.dest, received_filenames[0])
+            received_file_path = os.path.join(DEST_DIR, received_filenames[0])
             file_size_bytes = os.path.getsize(received_file_path)
 
             transfer_time = end_time - start_time
