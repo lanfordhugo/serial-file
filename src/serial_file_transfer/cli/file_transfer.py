@@ -277,6 +277,20 @@ class FileTransferCLI:
                     print("开始传输文件...")
                     sender = FileSender(transfer_serial, source_path, transfer_config)
 
+                    # 等待接收端请求文件名
+                    print("等待接收端请求文件名...")
+                    if not sender.wait_for_filename_request():
+                        print("❌ 等待文件名请求超时！")
+                        return False
+
+                    # 发送文件名（只发送文件名，不包含路径）
+                    import os
+                    filename = os.path.basename(source_path)
+                    print(f"发送文件名: {filename}")
+                    if not sender.send_filename(filename):
+                        print("❌ 发送文件名失败！")
+                        return False
+
                     if sender.start_transfer():
                         print("🎉 文件发送成功！")
                         return True
@@ -426,22 +440,84 @@ class FileTransferCLI:
                 if negotiated_transfer_mode == 1:  # 单文件模式
                     print("📄 单文件接收模式")
 
-                    # 对于单文件，生成默认的文件路径
-                    # 单文件传输协议中，文件名会在传输过程中自动处理
-                    import time
-                    timestamp = int(time.time())
-                    default_filename = f"received_file_{timestamp}"
-                    file_save_path = final_save_path / default_filename
+                    # 创建recv_file目录
+                    recv_file_dir = final_save_path / "recv_file"
+                    recv_file_dir.mkdir(parents=True, exist_ok=True)
+                    print(f"📁 接收目录: {recv_file_dir}")
 
-                    # 确保父目录存在
-                    file_save_path.parent.mkdir(parents=True, exist_ok=True)
-                    print(f"📄 准备接收到: {file_save_path}")
+                    # 初始化接收器（不设置保存路径，等待获取文件名后再设置）
+                    receiver = FileReceiver(transfer_serial, config=transfer_config)
 
-                    # 初始化接收器并开始传输
-                    receiver = FileReceiver(transfer_serial, str(file_save_path), transfer_config)
+                    # 请求并接收文件名（带重试机制）
+                    print("📝 正在获取文件名...")
+                    filename = None
+                    max_retries = 3
+
+                    for attempt in range(max_retries):
+                        if attempt > 0:
+                            print(f"🔄 重试获取文件名 ({attempt + 1}/{max_retries})...")
+
+                        if not receiver.send_filename_request():
+                            print(f"❌ 发送文件名请求失败 (尝试 {attempt + 1})")
+                            if attempt == max_retries - 1:
+                                print("❌ 多次尝试后仍无法发送文件名请求！")
+                                return False
+                            continue
+
+                        filename = receiver.receive_filename()
+                        if filename is not None:
+                            break
+
+                        print(f"❌ 接收文件名失败 (尝试 {attempt + 1})")
+                        if attempt == max_retries - 1:
+                            print("❌ 多次尝试后仍无法接收文件名！")
+                            return False
+
+                    if filename is None:
+                        print("❌ 无法获取文件名！")
+                        return False
+
+                    print(f"📄 接收到文件名: {filename}")
+
+                    # 使用接收到的文件名设置保存路径
+                    import os
+                    from ..utils.path_utils import sanitize_filename
+
+                    # 提取文件名（去除路径部分，只保留文件名和扩展名）
+                    safe_filename = os.path.basename(filename)
+                    if not safe_filename:  # 如果文件名为空，使用默认名称
+                        safe_filename = "received_file"
+
+                    # 清理文件名，确保安全性
+                    safe_filename = sanitize_filename(safe_filename)
+
+                    file_save_path = recv_file_dir / safe_filename
+
+                    # 如果文件已存在，添加数字后缀避免覆盖
+                    counter = 1
+                    original_path = file_save_path
+                    while file_save_path.exists():
+                        stem = original_path.stem
+                        suffix = original_path.suffix
+                        file_save_path = recv_file_dir / f"{stem}_{counter}{suffix}"
+                        counter += 1
+
+                        # 防止无限循环
+                        if counter > 9999:
+                            print(f"⚠️ 警告：文件名冲突过多，使用时间戳后缀")
+                            import time
+                            timestamp = int(time.time())
+                            file_save_path = recv_file_dir / f"{original_path.stem}_{timestamp}{original_path.suffix}"
+                            break
+
+                    print(f"📄 准备保存到: {file_save_path}")
+
+                    # 设置保存路径并开始传输
+                    receiver.init_receive_params(file_save_path)
 
                     if receiver.start_transfer():
                         print("🎉 单文件接收成功！")
+                        print(f"✅ 文件已保存到: {file_save_path}")
                         return True
                     else:
                         print("❌ 单文件接收失败！")
