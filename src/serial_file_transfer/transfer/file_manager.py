@@ -13,6 +13,7 @@ from typing import List, Optional, Union
 from ..config.settings import TransferConfig
 from ..core.serial_manager import SerialManager
 from ..utils.logger import get_logger
+from ..utils.path_utils import create_safe_path, ensure_directory_exists
 from .sender import FileSender
 from .receiver import FileReceiver
 
@@ -47,7 +48,7 @@ class SenderFileManager:
         self._scan_files()
 
     def _scan_files(self) -> None:
-        """扫描文件夹中的所有文件"""
+        """递归扫描文件夹中的所有文件，保存相对路径"""
         try:
             if not self.folder_path.exists():
                 logger.error(f"文件夹不存在: {self.folder_path}")
@@ -57,10 +58,14 @@ class SenderFileManager:
                 logger.error(f"路径不是文件夹: {self.folder_path}")
                 return
 
-            # 扫描所有文件
-            for file_path in self.folder_path.iterdir():
+            # 递归扫描所有文件，保存相对路径
+            for file_path in self.folder_path.rglob("*"):
                 if file_path.is_file():
-                    self.file_list.append(file_path.name)
+                    # 计算相对于根文件夹的路径
+                    relative_path = file_path.relative_to(self.folder_path)
+                    # 使用正斜杠作为路径分隔符，确保跨平台兼容性
+                    relative_path_str = str(relative_path).replace("\\", "/")
+                    self.file_list.append(relative_path_str)
 
             # 添加结束标记
             self.file_list.append("")
@@ -117,6 +122,7 @@ class SenderFileManager:
                     return True
 
                 # 初始化文件并开始传输
+                # filename现在包含相对路径，需要转换为绝对路径
                 file_path = self.folder_path / filename
                 if not self.sender.init_file(file_path):
                     logger.error(f"初始化文件失败: {file_path}")
@@ -205,8 +211,15 @@ class ReceiverFileManager:
                 logger.info(f"开始接收文件: [{filename}]")
 
                 # 设置保存路径并开始接收
-                save_path = self.folder_path / filename
-                self.receiver.init_receive_params(save_path)
+                # filename现在包含相对路径，需要安全处理并自动创建目录结构
+                safe_path = create_safe_path(self.folder_path, filename)
+
+                # 确保父目录存在
+                if not ensure_directory_exists(safe_path.parent):
+                    logger.error(f"无法创建目录: {safe_path.parent}")
+                    continue
+
+                self.receiver.init_receive_params(safe_path)
 
                 if self.receiver.start_transfer():
                     logger.info(f"文件 [{filename}] 接收完成")

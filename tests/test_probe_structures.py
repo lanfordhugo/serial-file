@@ -135,11 +135,13 @@ class TestCapabilityNegoData:
             total_size=1024 * 1024,
             selected_baudrate=921600,
             chunk_size=1024,  # P1-A新增必需参数
+            root_path="test_folder",  # 新增根路径字段
         )
 
         # 打包
         packed = original.pack()
-        assert len(packed) == 25  # P1-A更新后: 4+1+4+8+4+4 = 25字节
+        # 新的长度：4+1+4+8+4+4+2+len("test_folder") = 27+11 = 38字节
+        assert len(packed) == 38
 
         # 解包
         unpacked = CapabilityNegoData.unpack(packed)
@@ -150,11 +152,34 @@ class TestCapabilityNegoData:
         assert unpacked.total_size == original.total_size
         assert unpacked.selected_baudrate == original.selected_baudrate
         assert unpacked.chunk_size == original.chunk_size  # P1-A验证新字段
+        assert unpacked.root_path == original.root_path  # 验证根路径字段
 
     def test_unpack_invalid_data(self):
         """测试解包无效数据"""
         result = CapabilityNegoData.unpack(b"\x01\x02\x03")
         assert result is None
+
+    def test_pack_unpack_empty_root_path(self):
+        """测试空根路径的打包和解包"""
+        original = CapabilityNegoData(
+            session_id=0x12345678,
+            transfer_mode=1,
+            file_count=1,
+            total_size=1024,
+            selected_baudrate=115200,
+            chunk_size=512,
+            root_path="",  # 空根路径
+        )
+
+        # 打包
+        packed = original.pack()
+        # 长度：4+1+4+8+4+4+2+0 = 27字节
+        assert len(packed) == 27
+
+        # 解包
+        unpacked = CapabilityNegoData.unpack(packed)
+        assert unpacked is not None
+        assert unpacked.root_path == ""
 
 
 class TestCapabilityAckData:
@@ -233,11 +258,13 @@ class TestP1AChunkSizeNegotiation:
             total_size=1024 * 1024,
             selected_baudrate=460800,
             chunk_size=1024,  # P1-A新增字段
+            root_path="test_root",  # 新增根路径字段
         )
 
         # 测试打包
         packed = nego_data.pack()
-        assert len(packed) == 25  # 新的数据长度: 4+1+4+8+4+4 = 25
+        # 新的数据长度: 4+1+4+8+4+4+2+len("test_root") = 27+9 = 36
+        assert len(packed) == 36
 
         # 测试解包
         unpacked = CapabilityNegoData.unpack(packed)
@@ -245,6 +272,7 @@ class TestP1AChunkSizeNegotiation:
         assert unpacked.session_id == 12345
         assert unpacked.chunk_size == 1024
         assert unpacked.selected_baudrate == 460800
+        assert unpacked.root_path == "test_root"
 
     def test_capability_ack_with_negotiated_chunk_size(self):
         """测试能力确认数据包含协商的块大小字段"""
@@ -273,6 +301,7 @@ class TestP1AChunkSizeNegotiation:
             total_size=2**32 + 1000,  # 大文件
             selected_baudrate=1728000,
             chunk_size=8192,
+            root_path="large_folder",  # 新增根路径字段
         )
 
         # 打包再解包
@@ -286,6 +315,7 @@ class TestP1AChunkSizeNegotiation:
         assert unpacked.total_size == original.total_size
         assert unpacked.selected_baudrate == original.selected_baudrate
         assert unpacked.chunk_size == original.chunk_size
+        assert unpacked.root_path == original.root_path
 
     def test_capability_ack_pack_unpack_round_trip(self):
         """测试能力确认数据的完整往返序列化"""

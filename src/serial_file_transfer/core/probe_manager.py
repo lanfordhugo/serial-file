@@ -273,10 +273,19 @@ class ProbeManager:
             return False
 
     def negotiate_capability(
-        self, file_count: int, total_size: int, supported_baudrates: List[int]
+        self, file_count: int, total_size: int, supported_baudrates: List[int], root_path: str = ""
     ) -> Optional[int]:
         """
-        返回 selected_baudrate
+        协商传输能力
+
+        Args:
+            file_count: 文件数量
+            total_size: 总大小
+            supported_baudrates: 支持的波特率列表
+            root_path: 发送端根路径（用于接收端自动创建目录结构）
+
+        Returns:
+            选择的波特率，失败返回None
         """
         try:
             # 选择最高的公共波特率
@@ -308,6 +317,7 @@ class ProbeManager:
                 total_size=total_size,
                 selected_baudrate=selected_baudrate,
                 chunk_size=recommended_chunk_size,  # P1-A新增参数
+                root_path=root_path,  # 新增根路径信息
             )
 
             logger.info(
@@ -374,6 +384,8 @@ class ProbeManager:
             # 保存会话信息
             self.session_id = capability.session_id
             self.target_baudrate = capability.selected_baudrate
+            # 保存根路径信息，用于接收端自动创建目录结构
+            self.negotiated_root_path = capability.root_path
 
             # 检查波特率是否支持
             if capability.selected_baudrate not in self.supported_baudrates:

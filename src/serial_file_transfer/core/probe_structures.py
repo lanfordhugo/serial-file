@@ -119,28 +119,49 @@ class CapabilityNegoData:
     total_size: int  # 8字节总大小
     selected_baudrate: int  # 4字节选择的波特率
     chunk_size: int  # 4字节推荐块大小 - P1-A新增
+    root_path: str  # 变长字符串，发送端根路径信息（用于自动路径创建）
 
     def pack(self) -> bytes:
         """打包成字节数据"""
-        return struct.pack(
-            "<IBIQII",
+        # 编码根路径字符串
+        root_path_bytes = self.root_path.encode("utf-8")
+        root_path_length = len(root_path_bytes)
+
+        # 固定部分：4+1+4+8+4+4+2 = 27字节（新增2字节路径长度）
+        fixed_part = struct.pack(
+            "<IBIQIIH",
             self.session_id,
             self.transfer_mode,
             self.file_count,
             self.total_size,
             self.selected_baudrate,
             self.chunk_size,
+            root_path_length,
         )
+
+        return fixed_part + root_path_bytes
 
     @classmethod
     def unpack(cls, data: bytes) -> Optional["CapabilityNegoData"]:
         """从字节数据解包"""
         try:
-            if len(data) != 25:  # 4+1+4+8+4+4 = 25字节
+            if len(data) < 27:  # 至少需要固定部分的字节数
                 return None
-            values = struct.unpack("<IBIQII", data)
-            return cls(*values)
-        except struct.error:
+
+            # 解包固定部分
+            fixed_values = struct.unpack("<IBIQIIH", data[:27])
+            session_id, transfer_mode, file_count, total_size, selected_baudrate, chunk_size, root_path_length = fixed_values
+
+            # 检查数据长度是否匹配
+            if len(data) != 27 + root_path_length:
+                return None
+
+            # 解码根路径字符串
+            root_path_bytes = data[27:27 + root_path_length]
+            root_path = root_path_bytes.decode("utf-8")
+
+            return cls(session_id, transfer_mode, file_count, total_size, selected_baudrate, chunk_size, root_path)
+        except (struct.error, UnicodeDecodeError):
             return None
 
 

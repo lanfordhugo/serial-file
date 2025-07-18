@@ -17,6 +17,7 @@ from ..transfer.sender import FileSender
 from ..transfer.receiver import FileReceiver
 from ..transfer.file_manager import SenderFileManager, ReceiverFileManager
 from ..utils.logger import get_logger
+from ..utils.path_utils import get_relative_path_info
 
 logger = get_logger(__name__)
 
@@ -235,11 +236,13 @@ class FileTransferCLI:
 
                 print(f"✅ 找到接收设备，支持波特率: {response.supported_baudrates}")
 
-                # 能力协商
+                # 能力协商，传递根路径信息
+                root_path_name, is_folder = get_relative_path_info(Path(source_path))
                 selected_baudrate = probe_manager.negotiate_capability(
                     file_count=file_count,
                     total_size=total_size,
                     supported_baudrates=response.supported_baudrates,
+                    root_path=root_path_name,
                 )
 
                 if selected_baudrate is None:
@@ -315,7 +318,10 @@ class FileTransferCLI:
             if port is None:
                 return False
 
-            save_path = FileTransferCLI.get_user_input_save_path()
+            # 自动使用当前目录作为接收根目录
+            import os
+            save_path = os.getcwd()
+            print(f"✅ 自动接收目录: {save_path}")
 
             print("正在等待发送端连接...")
             print("提示: 请在发送端启动智能发送模式")
@@ -392,9 +398,19 @@ class FileTransferCLI:
             with SerialManager(final_config) as transfer_serial:
                 print("开始接收文件...")
 
+                # 根据协商的根路径信息自动创建接收目录
+                negotiated_root_path = getattr(probe_manager, "negotiated_root_path", "")
+                if negotiated_root_path:
+                    # 如果有根路径信息，在接收目录下创建对应的子目录
+                    final_save_path = Path(save_path) / negotiated_root_path
+                    final_save_path.mkdir(parents=True, exist_ok=True)
+                    print(f"✅ 自动创建接收目录: {final_save_path}")
+                else:
+                    final_save_path = Path(save_path)
+
                 # 尝试单文件接收，如果失败再尝试批量接收
                 # 这里可以根据协商时的传输模式来决定
-                receiver = FileReceiver(transfer_serial, save_path, transfer_config)
+                receiver = FileReceiver(transfer_serial, str(final_save_path), transfer_config)
 
                 if receiver.start_transfer():
                     print("🎉 文件接收成功！")
@@ -403,7 +419,7 @@ class FileTransferCLI:
                     # 尝试批量接收
                     print("尝试批量接收模式...")
                     file_manager = ReceiverFileManager(
-                        save_path, transfer_serial, transfer_config
+                        str(final_save_path), transfer_serial, transfer_config
                     )
 
                     if file_manager.start_batch_receive():

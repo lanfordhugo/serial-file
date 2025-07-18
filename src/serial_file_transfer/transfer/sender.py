@@ -196,10 +196,10 @@ class FileSender:
 
     def send_filename(self, filename: str) -> bool:
         """
-        发送文件名
+        发送文件名（支持相对路径）
 
         Args:
-            filename: 文件名
+            filename: 文件名或相对路径
 
         Returns:
             成功返回True，失败返回False
@@ -211,25 +211,26 @@ class FileSender:
             # 2) 如果过长则截断，同时给出日志提示
             if len(encoded_name) > MAX_FILE_NAME_LENGTH:
                 logger.warning(
-                    "文件名过长(%d > %d)，自动截断: %s",  # noqa: E501
+                    "文件路径过长(%d > %d)，自动截断: %s",  # noqa: E501
                     len(encoded_name),
                     MAX_FILE_NAME_LENGTH,
                     filename,
                 )
                 encoded_name = encoded_name[:MAX_FILE_NAME_LENGTH]
 
-            # 3) 填充到固定长度 (协议要求定长字段以\x00补齐)
-            padded_name = encoded_name.ljust(MAX_FILE_NAME_LENGTH, b"\x00")
+            # 3) 使用变长编码：2字节长度 + 实际数据
+            length_bytes = struct.pack("<H", len(encoded_name))
+            data = length_bytes + encoded_name
 
             # 4) 打包并发送
-            frame = FrameHandler.pack_frame(SerialCommand.REPLY_FILE_NAME, padded_name)
+            frame = FrameHandler.pack_frame(SerialCommand.REPLY_FILE_NAME, data)
 
             if frame is None:
                 logger.error("打包文件名帧失败")
                 return False
 
             if self.serial_manager.write(frame):
-                logger.info("已发送文件名: %s", filename)
+                logger.info("已发送文件路径: %s", filename)
                 return True
 
             logger.error("发送文件名失败")

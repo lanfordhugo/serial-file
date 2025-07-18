@@ -146,16 +146,16 @@ class FileReceiver:
 
     def receive_filename(self) -> Optional[str]:
         """
-        接收文件名
+        接收文件名（支持相对路径）
 
         Returns:
-            文件名，失败时返回None
+            文件名或相对路径，失败时返回None
         """
         try:
-            # 读取回复
+            # 读取回复（变长编码：2字节长度 + 数据）
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
-                6 + MAX_FILE_NAME_LENGTH,  # 帧头+CRC+文件名
+                6 + 2 + MAX_FILE_NAME_LENGTH,  # 帧头+CRC+长度字段+最大文件名长度
             )
 
             if cmd is None or data is None:
@@ -165,10 +165,19 @@ class FileReceiver:
                 logger.error(f"收到错误命令: {hex(cmd)}")
                 return None
 
-            # 解析文件名
-            filename_bytes = data.rstrip(b"\x00")
+            # 解析变长编码的文件名
+            if len(data) < 2:
+                logger.error("文件名数据长度不足")
+                return None
+
+            filename_length = struct.unpack("<H", data[:2])[0]
+            if len(data) < 2 + filename_length:
+                logger.error("文件名数据不完整")
+                return None
+
+            filename_bytes = data[2:2 + filename_length]
             filename = filename_bytes.decode("utf-8")
-            logger.info(f"接收到文件名: [{filename}]")
+            logger.info(f"接收到文件路径: [{filename}]")
             return filename
 
         except Exception as e:

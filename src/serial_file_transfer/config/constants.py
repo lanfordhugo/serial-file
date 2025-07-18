@@ -58,7 +58,7 @@ FRAME_FORMAT_SIZE: Final[int] = FRAME_HEADER_SIZE + FRAME_CRC_SIZE
 
 # 其他常量
 VAL_REQUEST_FILE: Final[int] = 0x55AA  # 请求文件的标识值 (2 字节特征值)
-MAX_FILE_NAME_LENGTH: Final[int] = 128  # 最大文件名长度
+MAX_FILE_NAME_LENGTH: Final[int] = 512  # 最大文件路径长度（支持相对路径）
 
 # 串口配置默认值
 DEFAULT_BAUDRATE: Final[int] = 115200  # 默认波特率
@@ -78,7 +78,7 @@ SWITCH_TIMEOUT: Final[float] = 2.0  # 波特率切换超时时间(秒)
 SWITCH_DELAY_MS: Final[int] = 100  # 波特率切换延时(毫秒)
 
 # 探测协议版本
-PROBE_PROTOCOL_VERSION: Final[int] = 1  # 当前探测协议版本
+PROBE_PROTOCOL_VERSION: Final[int] = 2  # 当前探测协议版本（v2支持根路径传输）
 
 # P1-A 动态块大小协商相关常量
 MIN_CHUNK_SIZE: Final[int] = 512  # 最小块大小
