@@ -249,9 +249,14 @@ class FileTransferCLI:
                     print("❌ 能力协商失败")
                     return False
 
-                negotiated_chunk = (
-                    getattr(probe_manager, "negotiated_chunk_size", None) or 10 * 1024
+                from ..config.constants import calculate_recommended_chunk_size
+
+                negotiated_chunk = getattr(
+                    probe_manager, "negotiated_chunk_size", None
                 )
+
+                if negotiated_chunk is None:
+                    negotiated_chunk = calculate_recommended_chunk_size(selected_baudrate)
 
                 # 执行波特率切换
                 if not probe_manager.switch_baudrate():
@@ -292,6 +297,9 @@ class FileTransferCLI:
                     else:
                         print("❌ 批量文件发送失败！")
                         return False
+
+            # 若代码执行至此仍未 return，视为失败
+            return False
 
         except KeyboardInterrupt:
             print("\n用户取消操作")

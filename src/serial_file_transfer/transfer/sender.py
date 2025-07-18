@@ -45,7 +45,8 @@ class FileSender:
         # 传输状态
         self.send_size = 0
         self.file_size = 0
-        self.file_data: bytes | None = b""  # 小文件缓存；流式模式为空字节
+        # 小文件缓存；流式模式下为 None，防止误判为空字节
+        self.file_data: bytes | None = None
         self.file_path: Path | None = None  # 文件路径
         self._file_handle = None  # 大文件流式读取句柄
         self._seq_id: int = 0  # 数据包序号
@@ -92,7 +93,7 @@ class FileSender:
             else:
                 # 大文件，使用流式读取模式
                 self._file_handle = file_path.open("rb")
-                self.file_data = b""
+                self.file_data = None  # 避免 get_file_data 误判
                 logger.debug("启用流式读取模式")
 
             logger.info(f"已加载文件: {file_path.name}, 大小: {self.file_size / 1024:.2f} KB")

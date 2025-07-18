@@ -66,7 +66,7 @@ DEFAULT_TIMEOUT: Final[float] = 0.1  # 默认超时时间(秒)
 DEFAULT_MAX_DATA_LENGTH: Final[int] = 1024  # 默认单次传输最大数据长度
 
 # 传输配置默认值
-DEFAULT_REQUEST_TIMEOUT: Final[int] = 300  # 默认请求超时时间(秒)
+DEFAULT_REQUEST_TIMEOUT: Final[int] = 5  # 默认请求超时时间(秒) - 从300秒优化到5秒
 DEFAULT_RETRY_COUNT: Final[int] = 3  # 默认重试次数
 
 # 智能探测协议配置
@@ -94,8 +94,8 @@ BAUDRATE_CHUNK_SIZE_MAP: Final[Dict[int, int]] = {
     460800: 1024,
     921600: 2048,
     1000000: 4096,
-    1500000: 8192,
-    1728000: 8192,
+    1500000: 4096,  # 从8192减少到4096
+    1728000: 16384,  # 高速链路使用更大块提高吞吐
 }
 
 

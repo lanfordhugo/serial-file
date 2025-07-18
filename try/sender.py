@@ -23,7 +23,7 @@ def main():
     BAUDRATE = 1728000  # 使用172800波特率
 
     # 要发送的测试文件 - 你可以修改这个路径
-    TEST_FILE = "testfile\sample.txt"  # 默认测试文件，你可以修改为实际要发送的文件路径
+    TEST_FILE = "test_files/baseline_100k.txt"  # 默认测试文件，你可以修改为实际要发送的文件路径
 
     print(f"YMODEM文件发送器 - 固定配置")
     print(f"串口: {PORT}")

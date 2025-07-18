@@ -1,0 +1,41 @@
+[
+  {
+    "test_name": "baseline_100k",
+    "file_path": "test_files/test_100k.txt",
+    "file_size": 165641,
+    "baudrate": 1728000,
+    "chunk_size": 16384,
+    "timeout": 0.1,
+    "transfer_time": 3.101383924484253,
+    "transfer_speed_kbps": 52.156970243340574,
+    "efficiency_percent": 0.024146745483028045,
+    "timestamp": "2025-07-18T15:44:39.489832",
+    "success": true
+  },
+  {
+    "test_name": "baseline_1m",
+    "file_path": "test_files/test_1m.txt",
+    "file_size": 1540200,
+    "baudrate": 1728000,
+    "chunk_size": 16384,
+    "timeout": 0.1,
+    "transfer_time": 14.55642318725586,
+    "transfer_speed_kbps": 103.32906258295927,
+    "efficiency_percent": 0.04783752897359225,
+    "timestamp": "2025-07-18T15:44:56.047116",
+    "success": true
+  },
+  {
+    "test_name": "baseline_5m",
+    "file_path": "test_files\\test_5m.txt",
+    "file_size": 6845000,
+    "baudrate": 1728000,
+    "chunk_size": 16384,
+    "timeout": 0.2,
+    "transfer_time": 58.179986238479614,
+    "transfer_speed_kbps": 114.89466988011931,
+    "efficiency_percent": 0.05319197679635153,
+    "timestamp": "2025-07-18T15:45:56.228805",
+    "success": true
+  }
+]

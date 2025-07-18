@@ -223,7 +223,17 @@ class FileReceiver:
                 6 + self.config.max_data_length,  # 帧头+CRC+最大数据长度
             )
 
+            # 如果未能解析有效帧（可能是CRC错误或超时），主动发送 NACK 请求重传
             if cmd is None or data is None:
+                try:
+                    # 使用当前期望的序号通知发送端重传
+                    nack_payload = struct.pack("<H", self._expected_seq & 0xFFFF)
+                    nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_payload)
+                    if nack_frame:
+                        self.serial_manager.write(nack_frame)
+                        logger.debug("因解析失败已发送 NACK 请求重传, seq=%d", self._expected_seq)
+                except Exception as nack_e:
+                    logger.error("发送 NACK 时出错: %s", nack_e)
                 return False
 
             if cmd == SerialCommand.NACK:
