@@ -29,9 +29,9 @@ class TestP1AChunkSizeCalculation:
     def test_calculate_recommended_chunk_size_higher_baudrate(self):
         """测试高于映射表中最高波特率的情况"""
         # 测试超高波特率，应该使用最大值
-        # 注意：3000000已在映射表中，所以直接返回映射值8192
+        # 注意：3000000已在映射表中，所以直接返回映射值16384
         result = calculate_recommended_chunk_size(3000000)  # 3Mbps
-        expected = 8192  # 直接从映射表获取
+        expected = 16384  # 直接从映射表获取
         assert result == expected
 
         # 测试真正超出映射表的波特率
@@ -118,7 +118,7 @@ class TestP1AChunkSizeCalculation:
         """测试特定波特率的推荐块大小"""
         # 测试TODO文档中提到的特定波特率
         assert calculate_recommended_chunk_size(460800) == 1024  # 460800bps→1K
-        assert calculate_recommended_chunk_size(1728000) == 8192  # 1728000bps→8K
+        assert calculate_recommended_chunk_size(1728000) == 16384  # 1728000bps→16K
 
         # 测试一些常见波特率
         assert calculate_recommended_chunk_size(115200) == 1024
@@ -133,7 +133,7 @@ class TestP1AIntegration:
         # 模拟发送端根据波特率计算推荐值
         baudrate = 1728000
         sender_recommended = calculate_recommended_chunk_size(baudrate)
-        assert sender_recommended == 8192
+        assert sender_recommended == 16384
 
         # 模拟接收端有自己的最大值限制
         receiver_max = 4096

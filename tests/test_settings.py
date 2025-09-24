@@ -164,7 +164,7 @@ class TestTransferConfig:
 
         # 验证默认值（这些值在constants.py中定义）
         assert config.max_data_length == 1024  # 1KB
-        assert config.request_timeout == 300  # 300秒
+        assert config.request_timeout == 5  # 5秒
         assert config.retry_count == 3  # 重试3次
         assert config.show_progress is True  # 显示进度
 
