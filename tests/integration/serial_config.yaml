@@ -1,0 +1,55 @@
+# 集成测试串口配置
+# ==================
+#
+# 用于真实硬件串口的集成测试配置
+# 修改此文件中的串口号以匹配你的硬件环境
+
+# 串口配置
+serial_ports:
+  # 发送端串口（发送文件的一端）
+  sender_port: "COM7"
+
+  # 接收端串口（接收文件的一端）
+  receiver_port: "COM8"
+
+# 串口参数
+serial_params:
+  # 波特率
+  baudrate: 1152000
+
+  # 数据位
+  bytesize: 8
+
+  # 校验位 (none/even/odd)
+  parity: "none"
+
+  # 停止位
+  stopbits: 1
+
+  # 超时时间（秒）
+  timeout: 0.5
+
+# 传输配置
+transfer_config:
+  # 单次传输最大数据长度（字节）
+  max_data_length: 1024
+
+  # 请求超时时间（秒）
+  request_timeout: 2.0
+
+  # 重试次数
+  retry_count: 3
+
+  # 是否显示进度条
+  show_progress: false
+
+# 测试配置
+test_config:
+  # 是否启用真实硬件测试（false时使用虚拟串口）
+  enable_hardware_test: false
+
+  # 硬件测试超时时间（秒）
+  hardware_test_timeout: 10.0
+
+  # 测试文件大小限制（字节，防止硬件测试时间过长）
+  max_test_file_size: 10240 # 10KB

@@ -479,36 +479,11 @@ class FileTransferCLI:
 
                     print(f"📄 接收到文件名: {filename}")
 
-                    # 使用接收到的文件名设置保存路径
-                    import os
-                    from ..utils.path_utils import sanitize_filename
-
-                    # 提取文件名（去除路径部分，只保留文件名和扩展名）
-                    safe_filename = os.path.basename(filename)
-                    if not safe_filename:  # 如果文件名为空，使用默认名称
-                        safe_filename = "received_file"
-
-                    # 清理文件名，确保安全性
-                    safe_filename = sanitize_filename(safe_filename)
-
-                    file_save_path = recv_file_dir / safe_filename
-
-                    # 如果文件已存在，添加数字后缀避免覆盖
-                    counter = 1
-                    original_path = file_save_path
-                    while file_save_path.exists():
-                        stem = original_path.stem
-                        suffix = original_path.suffix
-                        file_save_path = recv_file_dir / f"{stem}_{counter}{suffix}"
-                        counter += 1
-
-                        # 防止无限循环
-                        if counter > 9999:
-                            print(f"⚠️ 警告：文件名冲突过多，使用时间戳后缀")
-                            import time
-                            timestamp = int(time.time())
-                            file_save_path = recv_file_dir / f"{original_path.stem}_{timestamp}{original_path.suffix}"
-                            break
+                    # 使用 create_safe_path 统一生成保存路径（保留 recv_file 子目录）
+                    from ..utils.path_utils import create_safe_path, ensure_directory_exists
+                    file_save_path = create_safe_path(recv_file_dir, filename)
+                    # 兼容可能带相对子目录的情况，确保父目录存在
+                    ensure_directory_exists(file_save_path.parent)
 
                     print(f"📄 准备保存到: {file_save_path}")
 

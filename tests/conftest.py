@@ -27,9 +27,9 @@ from serial_file_transfer.config.constants import SerialCommand
 class TestConstants:
     """测试常量，避免魔法数字"""
     # 文件大小
-    SMALL_FILE_SIZE = 1024      # 1KB
-    MEDIUM_FILE_SIZE = 10240    # 10KB  
-    LARGE_FILE_SIZE = 102400    # 100KB
+    SMALL_FILE_SIZE = 1024         # 1KB
+    MEDIUM_FILE_SIZE = 10240       # 10KB  
+    LARGE_FILE_SIZE = 1048576      # 1MB
     
     # 传输参数
     DEFAULT_BAUDRATE = 115200
