@@ -16,10 +16,10 @@ from ..core.probe_manager import ProbeManager
 from ..transfer.sender import FileSender
 from ..transfer.receiver import FileReceiver
 from ..transfer.file_manager import SenderFileManager, ReceiverFileManager
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 from ..utils.path_utils import get_relative_path_info
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class FileTransferCLI:

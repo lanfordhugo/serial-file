@@ -11,10 +11,10 @@ from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 
 from ..config.settings import SerialConfig
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 from ..config.constants import FRAME_FORMAT_SIZE
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class SerialManager:

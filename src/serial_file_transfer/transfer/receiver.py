@@ -15,11 +15,11 @@ from ..config.constants import SerialCommand, VAL_REQUEST_FILE, MAX_FILE_NAME_LE
 from ..config.settings import TransferConfig
 from ..core.frame_handler import FrameHandler
 from ..core.serial_manager import SerialManager
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 from ..utils.progress import TransferProgressTracker, progress_bar, ProgressBar
 from ..utils.retry import retry_call
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class FileReceiver:

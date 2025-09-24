@@ -14,9 +14,9 @@ from dataclasses import dataclass
 from ..core.serial_manager import SerialManager
 from ..core.frame_handler import FrameHandler
 from ..config.constants import FRAME_HEADER_SIZE, FRAME_CRC_SIZE
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 @dataclass

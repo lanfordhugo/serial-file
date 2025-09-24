@@ -30,10 +30,10 @@ from ..core.probe_structures import (
     SwitchBaudrateData,
     SwitchAckData,
 )
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 from ..config.constants import calculate_recommended_chunk_size
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class ProbeTimeoutError(Exception):

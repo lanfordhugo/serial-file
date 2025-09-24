@@ -11,9 +11,9 @@ import argparse
 from pathlib import Path
 
 from .cli.file_transfer import FileTransferCLI
-from .utils.logger import get_logger
+from .utils.logger import get_console_logger
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 # 版本信息
 VERSION = "1.4.0"

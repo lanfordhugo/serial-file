@@ -9,9 +9,9 @@ import os
 import re
 from pathlib import Path
 from typing import Optional
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 def sanitize_filename(filename: str) -> str:

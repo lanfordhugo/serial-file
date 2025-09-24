@@ -12,12 +12,12 @@ from typing import List, Optional, Union
 
 from ..config.settings import TransferConfig
 from ..core.serial_manager import SerialManager
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 from ..utils.path_utils import create_safe_path, ensure_directory_exists
 from .sender import FileSender
 from .receiver import FileReceiver
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class SenderFileManager:

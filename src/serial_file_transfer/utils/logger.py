@@ -88,6 +88,7 @@ def setup_logger(
     level: int = logging.INFO,
     log_file: Optional[str] = None,
     console_output: bool = True,
+    file_output: bool = True,
 ) -> logging.Logger:
     """
     设置日志器
@@ -95,8 +96,9 @@ def setup_logger(
     Args:
         name: 日志器名称
         level: 日志级别
-        log_file: 日志文件路径，None表示不写入文件
+        log_file: 日志文件路径，None表示使用默认路径
         console_output: 是否输出到控制台
+        file_output: 是否输出到文件
 
     Returns:
         配置好的日志器
@@ -115,28 +117,29 @@ def setup_logger(
         logger.addHandler(console_handler)
 
     # 文件处理器
-    if log_file is None:
-        # 默认 logs 目录
-        logs_dir = Path.cwd() / "logs"
-        logs_dir.mkdir(exist_ok=True)
+    if file_output:
+        if log_file is None:
+            # 默认 logs 目录
+            logs_dir = Path.cwd() / "logs"
+            logs_dir.mkdir(exist_ok=True)
 
-        # 根据模块名称区分
-        if ".transfer.sender" in name:
-            file_name = "sender.log"
-        elif ".transfer.receiver" in name:
-            file_name = "receiver.log"
-        else:
-            file_name = "serial_file_transfer.log"
+            # 根据模块名称区分
+            if ".transfer.sender" in name:
+                file_name = "sender.log"
+            elif ".transfer.receiver" in name:
+                file_name = "receiver.log"
+            else:
+                file_name = "serial_file_transfer.log"
 
-        log_file = str(logs_dir / file_name)
+            log_file = str(logs_dir / file_name)
 
-    # 显式指定 UTF-8 编码
-    file_handler = logging.FileHandler(log_file, "a", "utf-8")
-    file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s.%(funcName)s():%(lineno)d]"
-    )
-    file_handler.setFormatter(file_formatter)
-    logger.addHandler(file_handler)
+        # 显式指定 UTF-8 编码
+        file_handler = logging.FileHandler(log_file, "a", "utf-8")
+        file_formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s [%(filename)s.%(funcName)s():%(lineno)d]"
+        )
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
 
     # 防止重复输出
     logger.propagate = False
@@ -144,19 +147,39 @@ def setup_logger(
     return logger
 
 
-def get_logger(name: str = "serial_file_transfer") -> logging.Logger:
+def get_logger(name: str = "serial_file_transfer", console_only: bool = False) -> logging.Logger:
     """
     获取日志器实例
 
     Args:
         name: 日志器名称
+        console_only: 是否仅输出到控制台（不创建日志文件）
 
     Returns:
         日志器实例
     """
-    if name not in _loggers:
-        _loggers[name] = setup_logger(name)
-    return _loggers[name]
+    # 为了支持不同的配置，使用不同的键值
+    logger_key = f"{name}_console_only" if console_only else name
+    
+    if logger_key not in _loggers:
+        if console_only:
+            _loggers[logger_key] = setup_logger(name, file_output=False)
+        else:
+            _loggers[logger_key] = setup_logger(name)
+    return _loggers[logger_key]
+
+
+def get_console_logger(name: str = "serial_file_transfer") -> logging.Logger:
+    """
+    获取仅输出到控制台的日志器（不创建文件）
+
+    Args:
+        name: 日志器名称
+
+    Returns:
+        仅输出到控制台的日志器实例
+    """
+    return get_logger(name, console_only=True)
 
 
 # 兼容原有的打印函数

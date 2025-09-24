@@ -21,9 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from serial_file_transfer.cli.file_transfer import FileTransferCLI
-from serial_file_transfer.utils.logger import get_logger
+from serial_file_transfer.utils.logger import get_console_logger
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 # 版本信息
 VERSION = "1.4.0"

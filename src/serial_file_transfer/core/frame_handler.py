@@ -19,9 +19,9 @@ from ..config.constants import (
     MAX_FILE_NAME_LENGTH,
 )
 from .checksum import calculate_checksum
-from ..utils.logger import get_logger
+from ..utils.logger import get_console_logger
 
-logger = get_logger(__name__)
+logger = get_console_logger(__name__)
 
 
 class FrameHandler:
