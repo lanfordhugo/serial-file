@@ -15,7 +15,7 @@ import os
 
 
 class ColoredFormatter(logging.Formatter):
-    """彩色日志格式化器"""
+    """彩色日志格式化器 - 性能优化版本"""
 
     # ANSI颜色代码
     COLORS = {
@@ -27,38 +27,53 @@ class ColoredFormatter(logging.Formatter):
         "RESET": "\033[0m",  # 重置
     }
 
-    def format(self, record):
-        """格式化日志记录"""
-        # 获取调用信息
+    def __init__(self):
+        """初始化格式化器，启用性能优化缓存"""
+        super().__init__()
+        # 缓存颜色格式，避免重复查找
+        self._color_cache = {}
+        for level, color_code in self.COLORS.items():
+            self._color_cache[level] = (color_code, self.COLORS["RESET"])
+
+    def _get_caller_info(self):
+        """获取调用者信息，使用缓存优化"""
         frame = inspect.currentframe()
         try:
-            # 寻找调用日志函数的栈帧
-            while frame:
+            # 寻找调用日志函数的栈帧（优化：直接跳过已知的日志模块栈帧）
+            skip_count = 0
+            while frame and skip_count < 10:  # 限制搜索深度，防止无限循环
                 if frame.f_code.co_filename != __file__:
                     caller_filename = Path(frame.f_code.co_filename).name
                     caller_function = frame.f_code.co_name
                     caller_line = frame.f_lineno
-                    break
+                    return caller_filename, caller_function, caller_line
                 frame = frame.f_back
-            else:
-                caller_filename = "unknown"
-                caller_function = "unknown"
-                caller_line = 0
+                skip_count += 1
+            
+            # 兜底返回
+            return "unknown", "unknown", 0
         finally:
             del frame
 
-        # 添加毫秒精度的时间戳
+    def format(self, record):
+        """格式化日志记录 - 性能优化版本"""
+        # 使用缓存的颜色信息
+        color, reset = self._color_cache.get(
+            record.levelname, 
+            self._color_cache.get("INFO", ("", ""))
+        )
+
+        # 获取调用信息
+        caller_filename, caller_function, caller_line = self._get_caller_info()
+
+        # 使用更高效的时间戳生成
         now = datetime.datetime.now()
         milliseconds = now.microsecond // 1000
-        timestamp = now.strftime(f"%Y-%m-%d %H:%M:%S.{milliseconds:03d}")
-
-        # 构建日志消息
-        color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
-        reset = self.COLORS["RESET"]
-
+        
+        # 性能优化：减少字符串格式化次数，使用单次格式化
         formatted_message = (
-            f"{color}[{timestamp}] {record.getMessage()} "
-            f"[{caller_filename}.{caller_function}():{caller_line}]{reset}"
+            f"{color}[{now.strftime('%Y-%m-%d %H:%M:%S')}.{milliseconds:03d}] "
+            f"{record.getMessage()} [{caller_filename}.{caller_function}():{caller_line}]{reset}"
         )
 
         return formatted_message

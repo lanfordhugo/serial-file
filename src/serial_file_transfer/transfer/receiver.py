@@ -426,6 +426,25 @@ class FileReceiver:
             logger.error(f"保存文件失败: {e}")
             return False
 
+    @property  
+    def _debug_seq_info(self) -> dict:
+        """
+        仅用于测试的序号状态查询
+        
+        Returns:
+            包含当前接收状态的字典
+        
+        Note:
+            此方法仅供单元测试使用，不应在生产代码中调用
+        """
+        return {
+            "expected_seq": self._expected_seq,
+            "recv_size": self.recv_size,
+            "file_size": self.file_size,
+            "has_file_handle": self._file_handle is not None and not self._file_handle.closed,
+            "save_path": str(self.save_path) if self.save_path else None,
+        }
+
     def __del__(self):
         if self._file_handle and not self._file_handle.closed:
             try:

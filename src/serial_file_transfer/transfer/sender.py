@@ -449,6 +449,25 @@ class FileSender:
             logger.error(f"文件传输异常: {e}")
             return False
 
+    @property
+    def _debug_seq_info(self) -> dict:
+        """
+        仅用于测试的序号状态查询
+        
+        Returns:
+            包含当前序号状态的字典
+        
+        Note:
+            此方法仅供单元测试使用，不应在生产代码中调用
+        """
+        return {
+            "seq_id": self._seq_id,
+            "send_size": self.send_size,
+            "file_size": self.file_size,
+            "has_file_handle": self._file_handle is not None,
+            "has_file_data": self.file_data is not None,
+        }
+
     def __del__(self):
         """确保文件句柄关闭"""
         if self._file_handle:

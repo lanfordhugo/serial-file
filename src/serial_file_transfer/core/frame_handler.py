@@ -16,6 +16,7 @@ from ..config.constants import (
     FRAME_HEADER_SIZE,
     FRAME_CRC_SIZE,
     FRAME_FORMAT_SIZE,
+    MAX_FILE_NAME_LENGTH,
 )
 from .checksum import calculate_checksum
 from ..utils.logger import get_logger
@@ -96,6 +97,15 @@ class FrameHandler:
             # 解析头部：命令字和数据长度
             header = frame_data[:FRAME_HEADER_SIZE]
             cmd, data_len = struct.unpack(FRAME_HEADER_FORMAT, header)
+
+            # 安全性增强：检查数据长度是否在合理范围内
+            MAX_REASONABLE_DATA_SIZE = MAX_FILE_NAME_LENGTH + 1024  # 最大合理数据大小
+            if data_len < 0:
+                logger.error(f"数据长度为负数: {data_len}")
+                return None
+            if data_len > MAX_REASONABLE_DATA_SIZE:
+                logger.error(f"数据长度超出合理范围: {data_len} > {MAX_REASONABLE_DATA_SIZE}")
+                return None
 
             # 检查数据长度是否匹配
             actual_data_len = len(frame_data) - FRAME_HEADER_SIZE - FRAME_CRC_SIZE
