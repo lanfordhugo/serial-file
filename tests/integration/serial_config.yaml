@@ -32,6 +32,7 @@ serial_params:
 # 传输配置
 transfer_config:
   # 单次传输最大数据长度（字节）
+  # 注意：不能超过FrameHandler的硬编码限制1536字节
   max_data_length: 1024
 
   # 请求超时时间（秒）

@@ -101,8 +101,9 @@ def test_end_to_end_virtual_serial_transfer(temp_dir, test_file_large):
     sender_config, receiver_config = _create_serial_configs_from_yaml(config_data)
     
     # 传输配置：适中块大小+合理超时，显示进度信息
+    # 注意：max_data_length不能超过FrameHandler的硬编码限制1536字节
     transfer_cfg = TransferConfig(
-        max_data_length=2048,  # 增加块大小以适应1M文件传输
+        max_data_length=1024,  # 使用安全的块大小，避免超出FrameHandler限制
         request_timeout=2.0,   # 增加超时时间
         retry_count=3,
         show_progress=True,    # 集成测试显示进度
