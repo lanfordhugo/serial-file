@@ -85,9 +85,9 @@ class TestSerialFileTransferApp:
 
         captured = capsys.readouterr()
         assert "帮助信息" in captured.out
-        assert "智能传输模式" in captured.out
-        assert "智能发送" in captured.out
-        assert "智能接收" in captured.out
+        assert "文件传输模式" in captured.out
+        assert "文件发送" in captured.out
+        assert "文件接收" in captured.out
         assert "使用步骤" in captured.out
 
 

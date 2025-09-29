@@ -27,10 +27,10 @@ def create_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例：
-  # 智能发送模式
+  # 文件发送模式
   python -m serial_file_transfer send --port COM1 --path file.txt --baudrate 115200
 
-  # 智能接收模式
+  # 文件接收模式
   python -m serial_file_transfer receive --port COM2 --save ./received/ --baudrate 115200
 
 更多信息请访问项目文档。
@@ -44,14 +44,14 @@ def create_parser():
     # 子命令
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
 
-    # 发送命令（智能模式）
-    send_parser = subparsers.add_parser("send", help="智能发送文件或文件夹")
+    # 发送命令
+    send_parser = subparsers.add_parser("send", help="发送文件或文件夹")
     send_parser.add_argument("--port", required=True, help="串口号（如 COM1, /dev/ttyUSB0）")
     send_parser.add_argument("--path", required=True, help="要发送的文件或文件夹路径")
     send_parser.add_argument("--baudrate", type=int, default=115200, help="起始波特率（默认115200）")
 
-    # 接收命令（智能模式）
-    receive_parser = subparsers.add_parser("receive", help="智能接收文件")
+    # 接收命令
+    receive_parser = subparsers.add_parser("receive", help="接收文件")
     receive_parser.add_argument("--port", required=True, help="串口号（如 COM2, /dev/ttyUSB1）")
     receive_parser.add_argument("--save", required=True, help="文件保存路径")
     receive_parser.add_argument("--baudrate", type=int, default=115200, help="起始波特率（默认115200）")
@@ -69,10 +69,10 @@ def main():
             parser.print_help()
             return
 
-        # 根据命令执行相应操作（仅智能模式）
+        # 根据命令执行相应操作
         if args.command == "send":
             try:
-                # 临时设置参数到CLI类，供智能发送使用
+                # 临时设置参数到CLI类，供发送使用
                 FileTransferCLI._temp_port = args.port
                 FileTransferCLI._temp_path = args.path
                 FileTransferCLI._temp_baudrate = args.baudrate
@@ -87,7 +87,7 @@ def main():
 
         elif args.command == "receive":
             try:
-                # 临时设置参数到CLI类，供智能接收使用
+                # 临时设置参数到CLI类，供接收使用
                 FileTransferCLI._temp_port = args.port
                 FileTransferCLI._temp_save_path = args.save
                 FileTransferCLI._temp_baudrate = args.baudrate

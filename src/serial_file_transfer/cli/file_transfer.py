@@ -131,18 +131,18 @@ class FileTransferCLI:
 
     @staticmethod
     def get_baudrate() -> int:
-        """获取波特率（智能模式下用于探测阶段）"""
+        """获取波特率"""
         # 如果有临时参数，使用临时参数（非交互模式）
         if FileTransferCLI._temp_baudrate:
             print(f"✅ 使用指定波特率: {FileTransferCLI._temp_baudrate}")
             return FileTransferCLI._temp_baudrate
 
-        # 智能模式下使用固定的探测波特率
-        from ..config.constants import PROBE_BAUDRATE
-        default_baudrate = PROBE_BAUDRATE  # 115200
+        # 使用默认波特率
+        from ..config.constants import DEFAULT_CLI_BAUDRATE
+        default_baudrate = DEFAULT_CLI_BAUDRATE
 
-        print(f"✅ 智能模式使用探测波特率: {default_baudrate}")
-        print("   （实际传输波特率将通过协商确定）")
+        print(f"✅ 使用默认波特率: {default_baudrate}")
+        print("   （可通过配置文件调整传输参数）")
         return default_baudrate
 
     @staticmethod
@@ -166,9 +166,9 @@ class FileTransferCLI:
 
     @staticmethod
     def smart_send() -> bool:
-        """智能发送模式 - 使用配置文件参数"""
+        """发送模式 - 使用配置文件参数"""
         try:
-            print("=== 串口文件传输 - 智能发送 ===")
+            print("=== 串口文件传输 - 发送模式 ===")
 
             # 获取用户输入
             port = FileTransferCLI.get_user_input_port()
@@ -247,7 +247,7 @@ class FileTransferCLI:
             print("\n用户取消操作")
             return False
         except Exception as e:
-            logger.error(f"智能发送时发生异常: {e}")
+            logger.error(f"发送时发生异常: {e}")
             print(f"❌ 发送失败: {e}")
             return False
         finally:
@@ -259,9 +259,9 @@ class FileTransferCLI:
 
     @staticmethod
     def smart_receive() -> bool:
-        """智能接收模式 - 使用配置文件参数"""
+        """接收模式 - 使用配置文件参数"""
         try:
-            print("=== 串口文件传输 - 智能接收 ===")
+            print("=== 串口文件传输 - 接收模式 ===")
 
             # 获取用户输入
             port = FileTransferCLI.get_user_input_port()
@@ -274,7 +274,7 @@ class FileTransferCLI:
             print(f"✅ 自动接收目录: {save_path}")
 
             print("正在等待发送端连接...")
-            print("提示: 请在发送端启动智能发送模式")
+            print("提示: 请在发送端启动发送模式")
 
             # 从配置文件加载传输参数
             serial_config = ConfigLoader.create_serial_config(port)
@@ -351,7 +351,7 @@ class FileTransferCLI:
             print("\n用户取消操作")
             return False
         except Exception as e:
-            logger.error(f"智能接收时发生异常: {e}")
+            logger.error(f"接收时发生异常: {e}")
             print(f"❌ 接收失败: {e}")
             return False
         finally:
