@@ -15,6 +15,7 @@ from ..config.constants import SerialCommand, VAL_REQUEST_FILE, MAX_FILE_NAME_LE
 from ..config.settings import TransferConfig
 from ..core.frame_handler import FrameHandler
 from ..core.serial_manager import SerialManager
+from ..core.sequence_recovery import SequenceRecoveryManager
 from ..utils.logger import get_console_logger
 from ..utils.progress import TransferProgressTracker, progress_bar, ProgressBar
 from ..utils.retry import retry_call
@@ -50,6 +51,13 @@ class FileReceiver:
         self._file_handle = None  # 流式写入句柄
         # 序号追踪
         self._expected_seq: int = 0
+
+        # 序号恢复管理器 (中期改进)
+        self.sequence_recovery = SequenceRecoveryManager(
+            enable_recovery=self.config.enable_sequence_recovery,
+            mismatch_threshold=self.config.sequence_mismatch_threshold,
+            sync_timeout=self.config.sync_timeout
+        )
 
         # 进度条实例
         self.progress_bar: Optional[ProgressBar] = None
@@ -262,6 +270,39 @@ class FileReceiver:
 
             if ack_cmd == SerialCommand.NACK:
                 logger.warning(f"收到序号 {seq_id} 与预期 {self._expected_seq} 不符，发送NACK")
+                
+                # 中期改进：检查是否需要触发序号同步
+                if self.sequence_recovery.record_sequence_mismatch():
+                    logger.info("尝试序号同步恢复...")
+                    
+                    # 执行序号同步
+                    synced_seq = self.sequence_recovery.perform_sequence_sync(
+                        self.serial_manager,
+                        self._expected_seq,
+                        self.recv_size // self.config.max_data_length  # 基于接收位置估算序号
+                    )
+                    
+                    if synced_seq is not None:
+                        logger.info(f"序号同步成功，更新期望序号: {self._expected_seq} -> {synced_seq}")
+                        self._expected_seq = synced_seq & 0xFFFF
+                        # 重新检查当前包的序号
+                        if seq_id == self._expected_seq:
+                            # 序号匹配了，可以接受这个包
+                            self.sequence_recovery.reset_mismatch_counter()
+                            ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, struct.pack("<H", seq_id))
+                            if ack_frame:
+                                self.serial_manager.write(ack_frame)
+                            # 继续处理数据...
+                            self.recv_size += len(payload)
+                            if self._file_handle is not None:
+                                self._file_handle.write(payload)
+                            else:
+                                self.file_data += payload
+                            self._expected_seq = (self._expected_seq + 1) & 0xFFFF
+                            return True
+                    else:
+                        logger.warning("序号同步失败，继续使用NACK重试")
+                
                 return False
 
             # 序号符合，保存数据
@@ -272,6 +313,9 @@ class FileReceiver:
             else:
                 self.file_data += payload
             self._expected_seq = (self._expected_seq + 1) & 0xFFFF
+            
+            # 序号匹配成功，重置不匹配计数器
+            self.sequence_recovery.reset_mismatch_counter()
             return True
 
         except Exception as e:

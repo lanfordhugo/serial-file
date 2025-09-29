@@ -56,6 +56,9 @@ class FrameHandler:
         elif cmd in [SerialCommand.ACK, SerialCommand.NACK]:
             # 确认命令：序号(2字节) 或 序号+建议长度(4字节)
             return 4
+        elif cmd in [SerialCommand.SYNC_REQUEST, SerialCommand.SYNC_REPLY]:
+            # 序号同步命令：接收端期望序号(2字节) + 发送端当前序号(2字节)
+            return 4
         elif cmd == SerialCommand.REQUEST_FILE_NAME:
             # 文件名请求：特征值(2字节)
             return 2

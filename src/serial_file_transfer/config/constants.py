@@ -25,6 +25,10 @@ class SerialCommand(IntEnum):
     ACK = 0x65  # 数据包确认 'e'
     NACK = 0x66  # 数据包重传请求 'f'
 
+    # 序号恢复机制命令 (中期改进)
+    SYNC_REQUEST = 0x67  # 序号同步请求 'g'
+    SYNC_REPLY = 0x68    # 序号同步回复 'h'
+
     # 文件名相关命令
     REQUEST_FILE_NAME = 0x51  # 请求文件名 'Q'
     REPLY_FILE_NAME = 0x52  # 回复文件名 'R'
@@ -53,6 +57,10 @@ DEFAULT_REQUEST_TIMEOUT: Final[int] = 30  # 默认请求超时时间(秒) - 等�
 DEFAULT_CONNECTION_TIMEOUT: Final[int] = 30  # 连接建立超时时间(秒) - 等待接收端启动
 DEFAULT_DATA_TIMEOUT: Final[int] = 5  # 数据传输超时时间(秒) - 传输过程中快速响应
 DEFAULT_RETRY_COUNT: Final[int] = 3  # 默认重试次数
+
+# 序号恢复机制配置 (中期改进)
+DEFAULT_SEQUENCE_MISMATCH_THRESHOLD: Final[int] = 3  # 连续序号不匹配阈值，超过则触发同步
+DEFAULT_SYNC_TIMEOUT: Final[int] = 2  # 序号同步超时时间(秒)
 
 # CLI默认波特率
 DEFAULT_CLI_BAUDRATE: Final[int] = 115200  # CLI默认波特率

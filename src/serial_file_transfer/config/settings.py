@@ -16,6 +16,8 @@ from .constants import (
     DEFAULT_CONNECTION_TIMEOUT,
     DEFAULT_DATA_TIMEOUT,
     DEFAULT_RETRY_COUNT,
+    DEFAULT_SEQUENCE_MISMATCH_THRESHOLD,
+    DEFAULT_SYNC_TIMEOUT,
 )
 
 
@@ -55,6 +57,19 @@ class TransferConfig:
     show_progress: bool = True  # 是否显示进度
     max_cache_size: int = 4 * 1024 * 1024  # 触发流式读取阈值(4MB)
     max_retries: int = 5  # 最大重试次数
+    
+    # 序号恢复机制配置 (中期改进)
+    sequence_mismatch_threshold: int = DEFAULT_SEQUENCE_MISMATCH_THRESHOLD  # 序号不匹配阈值
+    sync_timeout: int = DEFAULT_SYNC_TIMEOUT  # 序号同步超时时间
+    enable_sequence_recovery: bool = True  # 是否启用序号恢复机制
+    
+    # 自适应传输策略配置 (长期优化)
+    enable_adaptive_strategy: bool = True  # 是否启用自适应传输策略
+    adaptive_good_threshold: float = 0.95  # 成功率良好阈值
+    adaptive_poor_threshold: float = 0.80  # 成功率较差阈值
+    adaptive_bad_threshold: float = 0.60   # 成功率很差阈值
+    adaptive_window_size: int = 20         # 自适应策略的样本窗口大小
+    adaptive_adjustment_interval: float = 10.0  # 自适应调整间隔(秒)
 
     def __post_init__(self):
         """参数验证"""
@@ -72,3 +87,17 @@ class TransferConfig:
             raise ValueError("backoff_base必须大于0")
         if self.max_cache_size <= 0:
             raise ValueError("max_cache_size必须大于0")
+        if self.sequence_mismatch_threshold <= 0:
+            raise ValueError("sequence_mismatch_threshold必须大于0")
+        if self.sync_timeout <= 0:
+            raise ValueError("sync_timeout必须大于0")
+        if self.adaptive_good_threshold <= 0 or self.adaptive_good_threshold > 1:
+            raise ValueError("adaptive_good_threshold必须在0-1之间")
+        if self.adaptive_poor_threshold <= 0 or self.adaptive_poor_threshold > 1:
+            raise ValueError("adaptive_poor_threshold必须在0-1之间")
+        if self.adaptive_bad_threshold <= 0 or self.adaptive_bad_threshold > 1:
+            raise ValueError("adaptive_bad_threshold必须在0-1之间")
+        if self.adaptive_window_size <= 0:
+            raise ValueError("adaptive_window_size必须大于0")
+        if self.adaptive_adjustment_interval <= 0:
+            raise ValueError("adaptive_adjustment_interval必须大于0")
