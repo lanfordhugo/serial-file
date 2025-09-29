@@ -1,0 +1,66 @@
+---
+description: 当用户需要评审代码修改（Diff）时使用此规则，提供一个系统化的评审流程和检查要点。
+globs: 
+alwaysApply: false
+---
+# Diff 修改评审指南
+
+## 描述
+
+本规则旨在提供一个结构化的流程，帮助评审者系统地评估代码 Diff 修改，识别潜在问题、确保代码质量并验证改动是否符合预期和项目规范。
+
+## 评审流程与要点
+
+评审任何 Diff 修改时，请按以下步骤和要点进行：
+
+1. **理解修改目的 (Understand the Purpose):**
+    * 首先，明确本次 Diff 修改想要达成什么目标？是修复 bug、新增功能、优化性能还是重构？
+    * 对照相关的 Issue 或用户故事文档（如果存在）([mdc:memory-bank/open/M001_LogSnapshotMechanism/issues/issue_template.mdc], [mdc:memory-bank/open/M001_LogSnapshotMechanism/stories/story_template.mdc])，确保改动与目标一致。
+
+2. **检查变更范围和类型 (Check Scope and Type):**
+    * 改动涉及了哪些文件、模块或组件？ ([mdc:module_overview_docs])
+    * 改动是新增代码、修改现有代码还是删减代码？
+    * 重点关注修改集中的区域，评估改动范围是否合理。
+
+3. **代码逻辑评审 (Code Logic Review):**
+    * **新引入的逻辑:** 如果有新增的代码逻辑，仔细阅读理解其工作原理。考虑是否有更简洁、高效或鲁棒的实现方式。
+    * **修改的逻辑:** 理解修改现有逻辑的原因。评估修改是否正确解决了问题或实现了功能。考虑修改是否引入了新的边缘情况或副作用。
+    * **删除的逻辑:** 确认被删除的代码是否确实不再需要。删除的代码是否会影响其他部分的功能？
+    * **潜在错误:** 特别注意类型转换、边界条件、循环、异常处理、资源管理（内存、文件句柄等）等容易出错的地方。回顾我们之前讨论的字符串处理风险 ([mdc:.cursor/rules/diff_review_guide.mdc]，此条规则自身无法链接，但可意会我们之前的讨论)，检查是否存在类似风险。
+
+4. **遵循编码规范与设计原则 (Adherence to Standards):**
+    * 检查改动是否符合项目的编码风格 ([mdc:.cursor/rules/coding_style.mdc])。
+    * 检查改动是否遵循模块的设计原则 ([mdc:module_overview_docs])。
+    * 如果涉及测试代码，检查是否符合测试规范 ([mdc:.cursor/rules/testing])，是否使用了正确的测试框架和 Mocking 工具 ([mdc:test/fakeit/fakeit_doc.mdc], [mdc:test/fakeit/fakeit_advanced_usage.mdc])。
+
+5. **依赖与接口 (Dependencies and Interfaces):**
+    * 改动是否引入了新的外部依赖？这些依赖是否必要且管理得当？
+    * 如果修改了模块的对外接口 ([mdc:module_overview_docs])，是否考虑了兼容性？是否更新了相关的文档？
+
+6. **性能与资源影响 (Performance and Resource Impact):**
+    * 评估改动是否可能影响系统的性能（CPU、内存、I/O）。例如，是否引入了低效的算法或频繁的资源操作？
+    * 在大循环或频繁调用的函数中的改动尤其需要关注性能。
+
+7. **错误处理与日志 (Error Handling and Logging):**
+    * 检查改动是否妥善处理了可能的错误情况（函数返回值、异常等）。
+    * 评估新增的日志打印是否清晰、准确，是否包含了足够的上下文信息（如我们在 `CChargeUnit` 中讨论的终端 ID 和枪口 ID）。日志级别使用是否恰当？ ([mdc:.cursor/rules/testing])
+    * 对于移除的错误处理或日志，确认其合理性。
+
+8. **测试覆盖 (Test Coverage):**
+    * 改动是否伴随了相应的测试用例（单元测试、集成测试）？ ([mdc:.cursor/rules/testing])
+    * 新增或修改的代码行是否被测试覆盖？特别是核心逻辑和关键路径。
+    * 测试用例是否有效，能否捕获潜在的问题？是否遵循了 TDD/BDD 和 AAA/GWT 原则？ ([mdc:.cursor/rules/testing])
+
+9. **安全性考虑 (Security Considerations):**
+    * 改动是否引入了潜在的安全漏洞（如缓冲区溢出、注入攻击风险、敏感信息泄露等）？在处理用户输入、外部数据或涉及加密/权限的逻辑时尤其需要注意。
+
+10. **复现性与可调试性 (Reproducibility and Debuggability):**
+    * 改动是否容易理解和调试？新增的日志和错误信息是否有助于定位问题？
+
+## 执行评审
+
+* 使用评审工具（如 Git 的 diff 工具、代码托管平台的 Code Review 功能）逐行查看改动。
+* 在评审过程中，可以结合项目结构 ([mdc:module_overview_docs])、相关文档和已有规则 ([mdc:.cursor/rules/testing]) 进行对照。
+* 对有疑问或觉得存在风险的地方，提出评论并与作者讨论。
+
+遵循此指南，可以帮助你进行更全面和深入的 Diff 评审，提高代码质量。

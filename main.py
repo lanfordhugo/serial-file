@@ -62,7 +62,7 @@ class SerialFileTransferApp:
         print("帮助信息")
         print("=" * 50)
         print()
-        print("📡 配置化传输模式：")
+        print("📡 智能传输模式：")
         print("   - 使用配置文件管理传输参数")
         print("   - 智能检测文件/文件夹类型")
         print("   - 固定波特率，稳定可靠")

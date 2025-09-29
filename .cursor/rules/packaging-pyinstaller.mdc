@@ -1,0 +1,90 @@
+---
+alwaysApply: false
+---
+# Python PyInstaller 打包最佳实践
+
+统一 PyInstaller 打包参数与操作规范，适用于各种 Python 项目结构。
+
+## 项目结构识别
+
+- **主入口**：优先查找 `main.py`、`app.py`、`__main__.py`
+- **打包脚本**：使用 `build.py` 或 `build.bat`/`build.sh`
+- **依赖清单**：[requirements.txt](mdc:requirements.txt) 固定版本号
+- **配置文件**：通过 `--add-data` 包含配置目录
+- **源码目录**：使用 `--paths` 指定搜索路径
+
+## 打包命令规范
+
+### GUI 应用
+
+- 使用 `--windowed` 隐藏控制台窗口
+- 检测 GUI 框架：tkinter、PyQt、wxPython 等
+
+### CLI 应用
+
+- 使用 `--console` 或默认设置显示控制台
+- 移除 `--windowed` 参数
+
+### 混合应用
+
+- 根据启动参数动态决定窗口显示
+- 代码中处理控制台创建逻辑
+
+## 核心参数约定
+
+- `--onefile`：打包为单个可执行文件
+- `--clean`：清理临时文件和缓存
+- `--name`：指定可执行文件名
+- `--paths`：添加模块搜索路径
+- `--add-data`：包含资源文件（Windows 用 `;`，Linux/macOS 用 `:`）
+
+## 路径兼容性要求
+
+- 主入口必须处理 `sys._MEIPASS` 临时目录
+- 使用 `sys.path.insert(0, bundle_dir)` 确保模块导入
+- 资源文件通过 `resource_path()` 函数获取正确路径
+
+## 依赖管理原则
+
+- 固定依赖版本号避免构建差异
+- 包含 `pyinstaller==6.11.0` 在 requirements.txt
+- 使用 `pipreqs` 检测实际依赖
+
+## 常见问题处理
+
+### 模块导入失败
+
+- 确保 `--paths` 指定源码目录
+- 检查 `sys.path` 注入逻辑
+- 使用 `--hidden-import` 强制包含模块
+
+### 资源文件缺失
+
+- 使用 `--add-data` 包含所有资源
+- 代码中使用相对路径获取资源
+
+### 窗口显示异常
+
+- GUI 应用必须使用 `--windowed`
+- CLI 应用移除 `--windowed` 参数
+- 混合应用在代码中动态控制
+
+## 构建流程标准
+
+1. 清理历史产物：`build/`、`dist/`、`*.spec`、`__pycache__`
+2. 安装固定版本依赖
+3. 执行 PyInstaller 命令
+4. 验证可执行文件生成
+5. 清理中间产物，保留最终 exe
+
+## 平台差异处理
+
+- **Windows**：`--add-data "src;."`、`.exe` 扩展名、`.ico` 图标
+- **Linux/macOS**：`--add-data "src:."`、无扩展名、`.icns` 图标（macOS）
+- 使用 `platform.system()` 检测平台差异
+
+## 版本控制约定
+
+- `.gitignore` 包含 `*.spec`、`build/`、`dist/`
+- 保留构建脚本在版本控制中
+- 记录构建环境信息（Python 版本、操作系统）

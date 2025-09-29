@@ -230,7 +230,6 @@ Thumbs.db
 recv/
 temp/
 logs/
-.cursor/
 
 # 测试接收文件目录
 received_files/
