@@ -258,8 +258,69 @@ class FileTransferCLI:
                 input("按回车键退出...")
 
     @staticmethod
+    def _handle_unified_batch_receive(recv_file_dir: Path, transfer_serial: SerialManager, transfer_config: TransferConfig) -> bool:
+        """
+        统一批量接收处理方法
+        
+        无论单文件还是文件夹，都使用相同的批量传输协议：
+        1. 循环请求文件名
+        2. 如果收到文件名，传输该文件
+        3. 如果收到空文件名，传输结束
+        4. 自动适配单文件(1个文件)和文件夹(N个文件)
+        
+        Args:
+            recv_file_dir: 接收目录
+            transfer_serial: 串口管理器  
+            transfer_config: 传输配置
+            
+        Returns:
+            成功返回True，失败返回False
+        """
+        try:
+            # 直接使用ReceiverFileManager进行批量接收
+            # 它会自动处理单文件(收到1个文件+空结束符)和文件夹(收到N个文件+空结束符)
+            receiver_manager = ReceiverFileManager(
+                folder_path=recv_file_dir,
+                serial_manager=transfer_serial,
+                config=transfer_config
+            )
+            
+            print("📡 开始统一批量接收...")
+            print("📝 协议说明：")
+            print("   • 单文件传输：发送端发送 [文件名] → [空字符串结束]")
+            print("   • 文件夹传输：发送端发送 [文件1] → [文件2] → ... → [空字符串结束]")
+            print("   • 接收端无需区分类型，统一处理")
+            
+            success = receiver_manager.start_batch_receive()
+            
+            if success:
+                print("🎉 统一批量接收完成！")
+                print(f"📁 文件保存位置: {recv_file_dir}")
+                
+                # 显示接收的文件列表
+                received_files = list(recv_file_dir.rglob("*"))
+                received_files = [f for f in received_files if f.is_file()]
+                
+                if received_files:
+                    print(f"📋 共接收 {len(received_files)} 个文件:")
+                    for file_path in received_files:
+                        rel_path = file_path.relative_to(recv_file_dir)
+                        file_size = file_path.stat().st_size
+                        print(f"   📄 {rel_path} ({file_size/1024:.1f} KB)")
+                
+                return True
+            else:
+                print("❌ 统一批量接收失败！")
+                return False
+                
+        except Exception as e:
+            logger.error(f"统一批量接收异常: {e}")
+            print(f"❌ 接收过程中发生异常: {e}")
+            return False
+
+    @staticmethod
     def smart_receive() -> bool:
-        """智能接收模式 - 自动检测单文件或文件夹传输"""
+        """统一接收模式 - 使用批量传输协议处理单文件和文件夹"""
         try:
             print("=== 串口文件传输 - 接收模式 ===")
 
@@ -283,26 +344,18 @@ class FileTransferCLI:
             print(f"📋 传输参数: 波特率={serial_config.baudrate}, 块大小={transfer_config.max_data_length}")
 
             with SerialManager(serial_config) as transfer_serial:
-                print("开始接收文件...")
-                print("🔍 正在检测传输类型...")
-
                 # 创建recv_file目录
                 final_save_path = Path(save_path)
                 recv_file_dir = final_save_path / "recv_file"
                 recv_file_dir.mkdir(parents=True, exist_ok=True)
                 print(f"📁 接收目录: {recv_file_dir}")
 
-                # 检测传输类型的逻辑
-                transmission_type = FileTransferCLI._detect_transmission_type(transfer_serial, transfer_config)
+                print("🔄 启动统一批量接收模式（自动适配单文件/文件夹）")
+                print("✨ 无需检测传输类型，使用统一协议处理")
                 
-                if transmission_type == "folder":
-                    # 文件夹传输模式
-                    print("📁 检测到文件夹传输模式")
-                    return FileTransferCLI._handle_folder_receive(recv_file_dir, transfer_serial, transfer_config)
-                else:
-                    # 单文件传输模式
-                    print("📄 检测到单文件传输模式")
-                    return FileTransferCLI._handle_single_file_receive(recv_file_dir, transfer_serial, transfer_config)
+                # 统一使用批量传输协议
+                # 单文件 = 批量传输(1个文件)，文件夹 = 批量传输(N个文件)
+                return FileTransferCLI._handle_unified_batch_receive(recv_file_dir, transfer_serial, transfer_config)
 
         except KeyboardInterrupt:
             print("\n用户取消操作")
@@ -318,188 +371,14 @@ class FileTransferCLI:
             if "pytest" not in sys.modules:
                 input("按回车键退出...")
 
-    @staticmethod
-    def _detect_transmission_type(serial_manager, transfer_config) -> str:
-        """
-        智能检测传输类型（单文件或文件夹）
-        
-        检测策略：
-        1. 分析文件名特征（路径分隔符、分卷文件等）
-        2. 检测是否有多个文件
-        3. 默认降级到单文件模式
-        
-        Args:
-            serial_manager: 串口管理器
-            transfer_config: 传输配置
-            
-        Returns:
-            "file" 或 "folder"
-        """
-        try:
-            # 创建临时接收器进行检测
-            temp_receiver = FileReceiver(serial_manager, config=transfer_config)
-            
-            # 尝试获取第一个文件名
-            if not temp_receiver.send_filename_request():
-                return "file"  # 默认为单文件
-                
-            first_filename = temp_receiver.receive_filename()
-            if first_filename is None:
-                return "file"  # 默认为单文件
-            
-            print(f"📄 检测到第一个文件: {first_filename}")
-            
-            # 检测逻辑1：分析文件名特征
-            has_path_separator = "/" in first_filename or "\\" in first_filename
-            is_volume_file = any(first_filename.endswith(ext) for ext in [
-                '.001', '.002', '.003', '.004', '.005',
-                '.part1', '.part2', '.part3', '.part4', '.part5',
-                '.z01', '.z02', '.z03', '.rar', '.r01', '.r02'
-            ])
-            
-            if has_path_separator:
-                print("🔍 检测到路径分隔符，判定为文件夹传输")
-                return "folder"
-                
-            if is_volume_file:
-                print("🔍 检测到分卷文件，判定为文件夹传输")
-                return "folder"
-            
-            # 检测逻辑2：尝试探测是否还有第二个文件
-            print("🔍 探测是否还有更多文件...")
-            
-            # 注意：这里不能真正接收第一个文件，只是探测
-            # 我们使用一个更简单的策略：如果文件名看起来像单个文件，就当作单文件处理
-            # 如果后续发现还有文件，ReceiverFileManager会自动处理
-            
-            # 检测逻辑3：文件名模式分析
-            filename_lower = first_filename.lower()
-            
-            # 常见的单文件扩展名
-            single_file_extensions = [
-                '.txt', '.doc', '.pdf', '.jpg', '.png', '.mp4', '.avi',
-                '.exe', '.msi', '.deb', '.rpm', '.dmg', '.iso'
-            ]
-            
-            is_single_file = any(filename_lower.endswith(ext) for ext in single_file_extensions)
-            
-            if is_single_file and not is_volume_file:
-                print("🔍 检测到单一文件格式，判定为单文件传输")
-                return "file"
-            
-            # 默认策略：当不确定时，选择更安全的文件夹模式
-            # 文件夹模式可以处理单文件，但单文件模式无法处理多文件
-            print("🔍 无法确定传输类型，使用文件夹模式以确保兼容性")
-            return "folder"
-            
-        except Exception as e:
-            logger.error(f"检测传输类型异常: {e}")
-            return "file"  # 出错时默认为单文件
-
-    @staticmethod  
-    def _handle_single_file_receive(recv_file_dir, serial_manager, transfer_config) -> bool:
-        """
-        处理单文件接收
-        
-        Args:
-            recv_file_dir: 接收文件目录
-            serial_manager: 串口管理器
-            transfer_config: 传输配置
-            
-        Returns:
-            成功返回True，失败返回False
-        """
-        try:
-            # 初始化接收器
-            receiver = FileReceiver(serial_manager, config=transfer_config)
-
-            # 请求并接收文件名（带重试机制）
-            print("📝 正在获取文件名...")
-            filename = None
-            max_retries = 3
-
-            for attempt in range(max_retries):
-                if attempt > 0:
-                    print(f"🔄 重试获取文件名 ({attempt + 1}/{max_retries})...")
-
-                if not receiver.send_filename_request():
-                    print(f"❌ 发送文件名请求失败 (尝试 {attempt + 1})")
-                    if attempt == max_retries - 1:
-                        print("❌ 多次尝试后仍无法发送文件名请求！")
-                        return False
-                    continue
-
-                filename = receiver.receive_filename()
-                if filename is not None:
-                    break
-
-                print(f"❌ 接收文件名失败 (尝试 {attempt + 1})")
-                if attempt == max_retries - 1:
-                    print("❌ 多次尝试后仍无法接收文件名！")
-                    return False
-
-            if filename is None:
-                print("❌ 无法获取文件名！")
-                return False
-
-            print(f"📄 接收到文件名: {filename}")
-
-            # 使用 create_safe_path 统一生成保存路径
-            from ..utils.path_utils import create_safe_path, ensure_directory_exists
-            file_save_path = create_safe_path(recv_file_dir, filename)
-            ensure_directory_exists(file_save_path.parent)
-
-            print(f"📄 准备保存到: {file_save_path}")
-
-            # 设置保存路径并开始传输
-            receiver.init_receive_params(file_save_path)
-
-            if receiver.start_transfer():
-                print("🎉 单文件接收成功！")
-                print(f"✅ 文件已保存到: {file_save_path}")
-                return True
-            else:
-                print("❌ 单文件接收失败！")
-                return False
-                
-        except Exception as e:
-            logger.error(f"单文件接收异常: {e}")
-            print(f"❌ 单文件接收异常: {e}")
-            return False
-
-    @staticmethod
-    def _handle_folder_receive(recv_file_dir, serial_manager, transfer_config) -> bool:
-        """
-        处理文件夹接收
-        
-        Args:
-            recv_file_dir: 接收文件目录  
-            serial_manager: 串口管理器
-            transfer_config: 传输配置
-            
-        Returns:
-            成功返回True，失败返回False
-        """
-        try:
-            from ..transfer.file_manager import ReceiverFileManager
-            
-            # 使用批量接收管理器
-            file_manager = ReceiverFileManager(
-                recv_file_dir, serial_manager, transfer_config
-            )
-            
-            print("开始批量文件接收...")
-            
-            if file_manager.start_batch_receive():
-                print("🎉 文件夹接收成功！")
-                print(f"✅ 所有文件已保存到: {recv_file_dir}")
-                return True
-            else:
-                print("❌ 文件夹接收失败！")
-                return False
-                
-        except Exception as e:
-            logger.error(f"文件夹接收异常: {e}")
-            print(f"❌ 文件夹接收异常: {e}")
-            return False
+    # 已移除复杂的传输类型检测逻辑，统一使用批量传输协议
+    # 原方法：_detect_transmission_type, _handle_single_file_receive, _handle_folder_receive
+    # 现在统一使用：_handle_unified_batch_receive
+    
+    # 统一传输协议的优势：
+    # 1. 消除单文件/文件夹模式切换的复杂性
+    # 2. 发送端和接收端始终保持协议状态一致
+    # 3. 单文件传输 = 批量传输(1个文件) 
+    # 4. 文件夹传输 = 批量传输(N个文件)
+    # 5. 简化调试和维护
 

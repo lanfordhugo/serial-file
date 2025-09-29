@@ -323,7 +323,8 @@ class FileReceiver:
             return False
 
     def _receive_chunk_with_retry(self, addr: int, length: int) -> bool:
-        """带重试逻辑接收单个数据块"""
+        """带硬件恢复机制的重试逻辑接收单个数据块"""
+        import time
 
         def _try_receive():
             # 发送请求
@@ -338,14 +339,43 @@ class FileReceiver:
                 logger.warning(f"接收地址 {addr} 的数据包超时或失败")
                 return False
 
-        # 使用 retry_call 执行
+        # 第一轮：快速重试（总共约1-2秒）
         success = retry_call(
             _try_receive,
-            max_retry=self.config.max_retries,
+            max_retry=3,
             base_delay=0.1,
             logger=logger,
         )
-
+        
+        if success:
+            return True
+        
+        # 硬件恢复：清理缓冲区 + 休息让硬件恢复
+        logger.info(f"地址 {addr} 快速重试失败，进行硬件恢复（1秒）...")
+        time.sleep(1.0)
+        
+        try:
+            # 清理串口输入输出缓冲区，消除可能的数据残留
+            self.serial_manager.port.reset_input_buffer()
+            self.serial_manager.port.reset_output_buffer()
+            logger.debug(f"地址 {addr} 已清理串口缓冲区")
+        except Exception as e:
+            logger.debug(f"清理缓冲区时发生异常: {e}")
+        
+        # 第二轮：保守重试（约2-4秒）
+        logger.info(f"地址 {addr} 硬件恢复完成，开始保守重试...")
+        success = retry_call(
+            _try_receive,
+            max_retry=5,
+            base_delay=0.2,
+            logger=logger,
+        )
+        
+        if success:
+            logger.info(f"地址 {addr} 硬件恢复后传输成功")
+        else:
+            logger.error(f"地址 {addr} 经过硬件恢复和保守重试后仍然失败")
+        
         return success if success is not None else False
 
     def start_transfer(self) -> bool:

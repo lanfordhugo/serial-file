@@ -65,6 +65,16 @@ DEFAULT_SYNC_TIMEOUT: Final[int] = 2  # 序号同步超时时间(秒)
 # CLI默认波特率
 DEFAULT_CLI_BAUDRATE: Final[int] = 115200  # CLI默认波特率
 
+# 批量传输状态机定义
+class BatchTransferState(IntEnum):
+    """批量传输状态枚举"""
+    IDLE = 0          # 空闲状态
+    REQUESTING_NAME = 1   # 请求文件名
+    TRANSFERRING = 2      # 传输文件中
+    COMPLETED = 3         # 传输完成
+    FAILED = 4           # 传输失败
+    TERMINATED = 5       # 传输终止
+
 
 # P1-A 动态块大小协商相关常量
 MIN_CHUNK_SIZE: Final[int] = 512  # 最小块大小

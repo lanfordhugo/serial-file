@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 from ..config.settings import TransferConfig
+from ..config.constants import BatchTransferState
 from ..core.serial_manager import SerialManager
 from ..utils.logger import get_console_logger
 from ..utils.path_utils import create_safe_path, ensure_directory_exists
@@ -162,6 +163,12 @@ class ReceiverFileManager:
         self.config = config or TransferConfig()
 
         self.receiver = FileReceiver(serial_manager, config=config)
+        
+        # 批量传输状态机
+        self.state = BatchTransferState.IDLE
+        self.current_filename: Optional[str] = None
+        self.consecutive_failures = 0
+        self.max_consecutive_failures = 5
 
         # 创建保存文件夹
         self._create_folder()
@@ -174,60 +181,102 @@ class ReceiverFileManager:
         except Exception as e:
             logger.error(f"创建接收文件夹失败: {e}")
 
+    def _set_state(self, new_state: BatchTransferState, reason: str = "") -> None:
+        """设置状态并记录日志"""
+        if self.state != new_state:
+            logger.debug(f"状态切换: {self.state.name} -> {new_state.name} {reason}")
+            self.state = new_state
+
+    def _request_filename(self) -> Optional[str]:
+        """请求并接收文件名"""
+        self._set_state(BatchTransferState.REQUESTING_NAME, "开始请求文件名")
+        
+        for attempt in range(3):  # 最多尝试3次
+            if self.receiver.send_filename_request():
+                filename = self.receiver.receive_filename()
+                if filename is not None:
+                    self.current_filename = filename
+                    return filename
+            
+            logger.debug(f"获取文件名失败，第{attempt + 1}/3次尝试")
+            time.sleep(0.2)
+        
+        return None
+
+    def _transfer_single_file(self, filename: str) -> bool:
+        """传输单个文件"""
+        self._set_state(BatchTransferState.TRANSFERRING, f"开始传输文件: {filename}")
+        
+        # 设置保存路径并开始接收
+        safe_path = create_safe_path(self.folder_path, filename)
+        
+        # 确保父目录存在
+        if not ensure_directory_exists(safe_path.parent):
+            logger.error(f"无法创建目录: {safe_path.parent}")
+            return False
+        
+        self.receiver.init_receive_params(safe_path)
+        
+        # 执行文件传输
+        return self.receiver.start_transfer()
+
     def start_batch_receive(self) -> bool:
         """
         开始批量接收文件
+
+        使用状态机管理传输流程，依靠单次请求超时和重试机制
 
         Returns:
             成功返回True，失败返回False
         """
         try:
             logger.info("开始批量文件接收...")
+            self._set_state(BatchTransferState.IDLE, "初始化批量接收")
 
-            start_time = time.time()
-
-            while True:
-                # 检查总体超时
-                if time.time() - start_time > self.config.request_timeout:
-                    logger.error(f"批量接收总体超时: {self.config.request_timeout}秒")
-                    return False
-
-                # 请求文件名
-                if not self.receiver.send_filename_request():
-                    time.sleep(0.1)
-                    continue
-
-                # 接收文件名
-                filename = self.receiver.receive_filename()
+            while self.state not in [BatchTransferState.COMPLETED, BatchTransferState.FAILED, BatchTransferState.TERMINATED]:
+                # 1. 请求文件名
+                filename = self._request_filename()
+                
                 if filename is None:
-                    time.sleep(0.1)
+                    self.consecutive_failures += 1
+                    logger.warning(f"获取文件名失败，连续失败次数: {self.consecutive_failures}")
+                    
+                    if self.consecutive_failures >= self.max_consecutive_failures:
+                        logger.error(f"连续{self.max_consecutive_failures}次获取文件名失败")
+                        self._set_state(BatchTransferState.FAILED, "连续失败次数过多")
+                        break
+                    
+                    time.sleep(0.5)
                     continue
-
-                # 如果文件名为空，表示接收完毕
+                
+                # 2. 检查是否传输完毕
                 if filename == "":
                     logger.info("所有文件接收完毕")
-                    return True
-
+                    self._set_state(BatchTransferState.COMPLETED, "传输完成")
+                    break
+                
+                # 3. 传输单个文件
                 logger.info(f"开始接收文件: [{filename}]")
-
-                # 设置保存路径并开始接收
-                # filename现在包含相对路径，需要安全处理并自动创建目录结构
-                safe_path = create_safe_path(self.folder_path, filename)
-
-                # 确保父目录存在
-                if not ensure_directory_exists(safe_path.parent):
-                    logger.error(f"无法创建目录: {safe_path.parent}")
-                    continue
-
-                self.receiver.init_receive_params(safe_path)
-
-                if self.receiver.start_transfer():
+                success = self._transfer_single_file(filename)
+                
+                if success:
                     logger.info(f"文件 [{filename}] 接收完成")
+                    self.consecutive_failures = 0  # 重置失败计数
                 else:
                     logger.error(f"文件 [{filename}] 接收失败")
-                    # 根据配置决定是否继续
-                    continue
+                    self.consecutive_failures += 1
+                    
+                    if self.consecutive_failures >= self.max_consecutive_failures:
+                        logger.error(f"连续{self.max_consecutive_failures}次文件传输失败")
+                        self._set_state(BatchTransferState.FAILED, "连续传输失败")
+                        break
+                    
+                    logger.info("继续尝试接收下一个文件...")
+            
+            # 返回结果
+            return self.state == BatchTransferState.COMPLETED
 
         except Exception as e:
             logger.error(f"批量接收异常: {e}")
+            self._set_state(BatchTransferState.FAILED, f"异常: {e}")
             return False

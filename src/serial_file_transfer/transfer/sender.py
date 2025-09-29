@@ -179,8 +179,24 @@ class FileSender:
                 continue
 
             if cmd != SerialCommand.REQUEST_FILE_SIZE:
-                logger.warning(f"收到错误命令: {hex(cmd)}")
-                continue
+                # 检查是否是预期的协议命令
+                if cmd == SerialCommand.SYNC_REQUEST:
+                    logger.debug(f"在等待文件大小请求时收到序号同步请求: {hex(cmd)}")
+                    # 处理序号同步
+                    sync_result = self.sequence_recovery.handle_sync_request(self.serial_manager, data)
+                    if sync_result:
+                        expected_seq, current_seq = sync_result
+                        self._seq_id = expected_seq
+                        logger.info(f"序号同步完成: 发送端序号调整为 {expected_seq}")
+                    continue
+                elif cmd == SerialCommand.REQUEST_FILE_NAME:
+                    logger.debug(f"在等待文件大小请求时收到文件名请求，可能是协议时序问题")
+                    # 这可能是正常的协议时序，不算错误
+                    continue
+                else:
+                    # 真正的错误命令
+                    logger.warning(f"等待文件大小请求时收到未预期命令: {hex(cmd)}")
+                    continue
 
             # 验证请求数据
             if int.from_bytes(data, byteorder="little") == VAL_REQUEST_FILE:
@@ -214,8 +230,20 @@ class FileSender:
                 continue
 
             if cmd != SerialCommand.REQUEST_FILE_NAME:
-                logger.warning(f"收到错误命令: {hex(cmd)}")
-                continue
+                # 检查是否是序号同步命令（预期的协议命令）
+                if cmd == SerialCommand.SYNC_REQUEST:
+                    logger.debug(f"在等待文件名请求时收到序号同步请求: {hex(cmd)}")
+                    # 处理序号同步（如果需要的话）
+                    sync_result = self.sequence_recovery.handle_sync_request(self.serial_manager, data)
+                    if sync_result:
+                        expected_seq, current_seq = sync_result
+                        self._seq_id = expected_seq  # 调整发送端序号
+                        logger.info(f"序号同步完成: 发送端序号调整为 {expected_seq}")
+                    continue
+                else:
+                    # 真正的错误命令
+                    logger.warning(f"等待文件名请求时收到未预期命令: {hex(cmd)}")
+                    continue
 
             logger.info("收到文件名请求")
             return True
@@ -432,8 +460,23 @@ class FileSender:
                 return True  # 继续等待
 
             if cmd != SerialCommand.REQUEST_DATA:
-                logger.warning(f"收到错误命令: {hex(cmd)}")
-                return True  # 继续等待
+                # 检查是否是预期的协议命令
+                if cmd == SerialCommand.SYNC_REQUEST:
+                    logger.debug(f"在等待数据请求时收到序号同步请求: {hex(cmd)}")
+                    # 处理序号同步
+                    sync_result = self.sequence_recovery.handle_sync_request(self.serial_manager, data)
+                    if sync_result:
+                        expected_seq, current_seq = sync_result
+                        self._seq_id = expected_seq
+                        logger.info(f"序号同步完成: 发送端序号调整为 {expected_seq}")
+                    return True  # 继续等待
+                elif cmd in [SerialCommand.REQUEST_FILE_SIZE, SerialCommand.REQUEST_FILE_NAME]:
+                    logger.debug(f"在等待数据请求时收到其他请求命令: {hex(cmd)}，可能是协议重新开始")
+                    return True  # 继续等待
+                else:
+                    # 真正的错误命令
+                    logger.warning(f"等待数据请求时收到未预期命令: {hex(cmd)}")
+                    return True  # 继续等待
 
             # 解析请求地址和长度
             addr, length = struct.unpack("<IH", cast(bytes, data))
