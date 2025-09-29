@@ -49,7 +49,9 @@ DEFAULT_TIMEOUT: Final[float] = 0.1  # 默认超时时间(秒)
 DEFAULT_MAX_DATA_LENGTH: Final[int] = 1024  # 默认单次传输最大数据长度
 
 # 传输配置默认值
-DEFAULT_REQUEST_TIMEOUT: Final[int] = 5  # 默认请求超时时间(秒) - 从300秒优化到5秒
+DEFAULT_REQUEST_TIMEOUT: Final[int] = 30  # 默认请求超时时间(秒) - 等待接收端启动时间
+DEFAULT_CONNECTION_TIMEOUT: Final[int] = 30  # 连接建立超时时间(秒) - 等待接收端启动
+DEFAULT_DATA_TIMEOUT: Final[int] = 5  # 数据传输超时时间(秒) - 传输过程中快速响应
 DEFAULT_RETRY_COUNT: Final[int] = 3  # 默认重试次数
 
 # CLI默认波特率

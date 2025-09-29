@@ -191,7 +191,7 @@ def d_print(*args: Any, **kwargs: Any) -> None:
         *args: 要打印的参数
         **kwargs: 关键字参数
     """
-    logger = get_logger()
+    logger = get_console_logger()  # 修改：使用console_logger避免创建文件
     message = " ".join(map(str, args))
     logger.info(message)
 
@@ -204,10 +204,10 @@ def e_print(*args: Any, **kwargs: Any) -> None:
         *args: 要打印的参数
         **kwargs: 关键字参数
     """
-    logger = get_logger()
+    logger = get_console_logger()  # 修改：使用console_logger避免创建文件
     message = " ".join(map(str, args))
     logger.error(message)
 
 
-# 默认设置根日志器
-_default_logger = setup_logger()
+# 注释掉默认根日志器设置，避免创建不必要的日志文件
+# _default_logger = setup_logger()

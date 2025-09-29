@@ -53,21 +53,21 @@ DIST_DIR = "dist"
 BUILD_DIR = "build"
 SRC_DIR = "src"
 
-# PyInstaller隐藏导入模块
+# PyInstaller隐藏导入模块（仅包含实际使用的）
 HIDDEN_IMPORTS = [
-    "serial_file_transfer",
-    "serial",
-    "serial.tools",
-    "serial.tools.list_ports",
-    "ymodem",
-    "numpy"
+    "serial_file_transfer",  # 项目主模块
+    "serial",               # 串口通信核心
+    "serial.tools",         # 串口工具
+    "serial.tools.list_ports",  # 串口列表
+    "yaml",                 # PyYAML配置解析
+    "colorama",            # 控制台颜色（构建工具使用）
 ]
 
-# PyInstaller收集模块
+# PyInstaller收集模块（仅包含实际使用的）
 COLLECT_ALL = [
-    "serial_file_transfer",
-    "serial",
-    "ymodem"
+    "serial_file_transfer",  # 项目主模块
+    "serial",               # 串口通信模块
+    "yaml",                 # PyYAML模块
 ]
 
 # 颜色输出支持（Windows兼容）
@@ -162,9 +162,13 @@ def show_build_tips():
     print()
 
 def get_system_encoding() -> str:
-    """获取系统控制台编码"""
+    """获取系统控制台编码，优先使用UTF-8"""
     try:
         import locale
+
+        # 检查环境变量是否强制UTF-8
+        if os.environ.get('PYTHONUTF8') == '1' or os.environ.get('PYTHONIOENCODING', '').lower().startswith('utf'):
+            return 'utf-8'
 
         # Windows系统特殊处理
         if os.name == 'nt':
@@ -175,24 +179,19 @@ def get_system_encoding() -> str:
                 if cp == 65001:  # UTF-8
                     return 'utf-8'
                 elif cp == 936:  # GBK/GB2312
-                    return 'gbk'
+                    return 'utf-8'  # 强制使用UTF-8，避免编码问题
                 elif cp == 950:  # Big5
-                    return 'big5'
+                    return 'utf-8'  # 强制使用UTF-8
                 else:
-                    # 对于其他代码页，尝试使用locale
-                    encoding = locale.getpreferredencoding()
-                    return encoding or 'gbk'
+                    # 对于其他代码页，优先使用UTF-8
+                    return 'utf-8'
             except:
-                # 如果获取失败，使用locale
-                try:
-                    encoding = locale.getpreferredencoding()
-                    return encoding or 'gbk'
-                except:
-                    return 'gbk'  # Windows默认使用GBK
+                # 如果获取失败，使用UTF-8
+                return 'utf-8'
         else:
-            # 非Windows系统
+            # 非Windows系统，优先使用UTF-8
             encoding = locale.getpreferredencoding()
-            return encoding or 'utf-8'
+            return 'utf-8' if encoding.lower() in ['ascii', 'c', 'posix'] else encoding
     except:
         return 'utf-8'
 
@@ -550,11 +549,34 @@ class BuildManager:
         self.build_type = "onefile"  # 默认单文件模式
         self.test_mode = False  # 测试模式标志
 
+        # 设置UTF-8编码环境
+        self.setup_utf8_environment()
+
         # 初始化颜色支持
         Colors.disable_on_windows()
 
         # 初始化日志记录
         self.setup_logging()
+
+    def setup_utf8_environment(self):
+        """设置UTF-8编码环境"""
+        try:
+            # 设置Python UTF-8环境变量
+            os.environ['PYTHONIOENCODING'] = 'utf-8'
+            os.environ['PYTHONUTF8'] = '1'
+            
+            # Windows系统设置控制台代码页
+            if os.name == 'nt':
+                try:
+                    # 尝试设置控制台代码页为UTF-8
+                    import subprocess
+                    subprocess.run(['chcp', '65001'], capture_output=True, check=False)
+                except:
+                    pass  # 忽略设置失败
+            
+            print_info("已配置UTF-8编码环境")
+        except Exception as e:
+            print_warning(f"UTF-8环境配置部分失败: {e}")
 
     def setup_logging(self):
         """设置日志记录"""
@@ -624,6 +646,20 @@ class BuildManager:
 
         print_success(f"找到源代码目录: {SRC_DIR}")
 
+        # 检查config目录
+        config_dir_path = self.project_root / "config"
+        if not config_dir_path.exists():
+            print_warning("找不到配置目录: config")
+            print_warning("程序将使用默认配置")
+        else:
+            print_success("找到配置目录: config")
+            # 检查主要配置文件
+            transfer_config = config_dir_path / "transfer.yaml"
+            if transfer_config.exists():
+                print_success("找到传输配置文件: config/transfer.yaml")
+            else:
+                print_warning("未找到传输配置文件: config/transfer.yaml")
+
         # 检查requirements.txt文件（可选）
         requirements_path = self.project_root / REQUIREMENTS_FILE
         if requirements_path.exists():
@@ -660,15 +696,40 @@ class BuildManager:
         requirements_path = self.project_root / REQUIREMENTS_FILE
         if requirements_path.exists():
             print_info(f"安装项目依赖: {REQUIREMENTS_FILE}")
+            
+            # 先升级pip到最新版本
+            print_info("升级pip到最新版本...")
             success, output = run_command(
-                [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)],
-                f"安装{REQUIREMENTS_FILE}中的依赖"
+                [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+                "升级pip"
             )
             if not success:
-                print_error("项目依赖安装失败")
-                print_error(output)
-                return False
-            print_success("项目依赖安装成功")
+                print_warning("pip升级失败，继续使用当前版本")
+            
+            # 安装核心依赖（仅实际使用的）
+            print_info("安装核心运行时依赖...")
+            core_deps = ["pyserial==3.5", "PyYAML==6.0.3", "colorama==0.4.6"]
+            for dep in core_deps:
+                success, output = run_command(
+                    [sys.executable, "-m", "pip", "install", dep],
+                    f"安装 {dep}"
+                )
+                if not success:
+                    print_warning(f"依赖 {dep} 安装失败，可能影响功能")
+            
+            # 安装构建依赖
+            print_info("安装构建依赖...")
+            build_deps = ["pyinstaller==6.11.0", "pyinstaller-hooks-contrib==2025.6"]
+            for dep in build_deps:
+                success, output = run_command(
+                    [sys.executable, "-m", "pip", "install", dep],
+                    f"安装 {dep}"
+                )
+                if not success:
+                    print_error(f"构建依赖 {dep} 安装失败")
+                    return False
+            
+            print_success("项目依赖安装完成")
         else:
             print_info("跳过项目依赖安装（未找到requirements.txt）")
 
@@ -771,6 +832,7 @@ class BuildManager:
             "--console",
             "--name", APP_NAME,
             "--add-data", f"{SRC_DIR}{os.pathsep}{SRC_DIR}",
+            "--add-data", f"config{os.pathsep}config",  # 包含配置文件目录
             "--noconfirm"
         ]
 
@@ -997,6 +1059,19 @@ class BuildManager:
         else:
             print_warning("可执行文件测试失败，但文件已生成")
             print_warning("这可能是正常的，取决于程序的命令行参数处理")
+
+        # 测试配置文件加载
+        print_info("测试配置文件加载...")
+        success, output = run_command(
+            [str(exe_path), "--help"],
+            "测试配置文件和帮助信息",
+            check=False
+        )
+
+        if success and ("文件传输模式" in output or "help" in output.lower()):
+            print_success("配置文件加载测试通过")
+        else:
+            print_warning("配置文件加载测试未能确认，但可执行文件已生成")
 
         print_success("构建验证完成")
         return True

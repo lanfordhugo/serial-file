@@ -20,6 +20,10 @@ from pathlib import Path
 # 添加src路径到Python路径
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+# 导入资源路径处理器并初始化打包环境
+from serial_file_transfer.utils.resource_path import setup_packaged_environment
+setup_packaged_environment()
+
 from serial_file_transfer.cli.file_transfer import FileTransferCLI
 from serial_file_transfer.utils.logger import get_console_logger
 

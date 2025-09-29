@@ -13,7 +13,9 @@ serial_config:
 # 传输配置
 transfer_config:
   max_data_length: 16384  # 单次传输最大数据长度 (字节) - 适合高速波特率
-  request_timeout: 0.2    # 请求超时时间 (秒) - 高速串口优化
+  request_timeout: 30     # 请求超时时间 (秒) - 等待接收端启动时间
+  connection_timeout: 30  # 连接建立超时时间 (秒) - 初始握手阶段
+  data_timeout: 5         # 数据传输超时时间 (秒) - 传输过程中快速响应
   retry_count: 3          # 重试次数
   backoff_base: 0.5       # 指数退避基础秒数
   show_progress: true     # 是否显示进度条

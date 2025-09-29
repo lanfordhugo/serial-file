@@ -13,6 +13,8 @@ from .constants import (
     DEFAULT_TIMEOUT,
     DEFAULT_MAX_DATA_LENGTH,
     DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_CONNECTION_TIMEOUT,
+    DEFAULT_DATA_TIMEOUT,
     DEFAULT_RETRY_COUNT,
 )
 
@@ -45,7 +47,9 @@ class TransferConfig:
     """传输配置类"""
 
     max_data_length: int = DEFAULT_MAX_DATA_LENGTH  # 单次传输最大数据长度
-    request_timeout: int = DEFAULT_REQUEST_TIMEOUT  # 请求超时时间(秒)
+    request_timeout: int = DEFAULT_REQUEST_TIMEOUT  # 请求超时时间(秒) - 用于初始连接
+    connection_timeout: int = DEFAULT_CONNECTION_TIMEOUT  # 连接建立超时时间(秒)
+    data_timeout: int = DEFAULT_DATA_TIMEOUT  # 数据传输超时时间(秒)
     retry_count: int = DEFAULT_RETRY_COUNT  # 重试次数
     backoff_base: float = 0.5  # 指数退避基础秒数
     show_progress: bool = True  # 是否显示进度
@@ -58,6 +62,10 @@ class TransferConfig:
             raise ValueError("max_data_length必须大于0")
         if self.request_timeout <= 0:
             raise ValueError("request_timeout必须大于0")
+        if self.connection_timeout <= 0:
+            raise ValueError("connection_timeout必须大于0")
+        if self.data_timeout <= 0:
+            raise ValueError("data_timeout必须大于0")
         if self.retry_count < 0:
             raise ValueError("retry_count不能为负数")
         if self.backoff_base <= 0:

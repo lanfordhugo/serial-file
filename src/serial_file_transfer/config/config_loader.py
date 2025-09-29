@@ -13,6 +13,7 @@ import serial
 
 from .settings import SerialConfig, TransferConfig
 from ..utils.logger import get_console_logger
+from ..utils.resource_path import get_resource_path, get_config_path
 
 logger = get_console_logger(__name__)
 
@@ -54,13 +55,17 @@ class ConfigLoader:
                 return path
             logger.warning(f"环境变量指定的配置文件不存在: {env_path}")
         
-        # 按默认路径查找
-        project_root = Path(__file__).parent.parent.parent.parent
+        # 按默认路径查找（支持打包环境）
         for rel_path in cls.DEFAULT_CONFIG_PATHS:
-            path = project_root / rel_path
-            if path.exists():
-                logger.debug(f"找到配置文件: {path}")
-                return path
+            try:
+                # 使用资源路径处理器获取正确路径
+                path = get_resource_path(rel_path)
+                if path.exists():
+                    logger.debug(f"找到配置文件: {path}")
+                    return path
+            except Exception as e:
+                logger.debug(f"检查配置文件路径时出错 {rel_path}: {e}")
+                continue
         
         logger.warning("未找到配置文件，将使用默认配置")
         return None
@@ -105,7 +110,9 @@ class ConfigLoader:
             },
             "transfer_config": {
                 "max_data_length": 16384,  # 高速传输块大小
-                "request_timeout": 0.2,    # 优化的请求超时
+                "request_timeout": 30,     # 等待接收端启动超时
+                "connection_timeout": 30,  # 连接建立超时
+                "data_timeout": 5,         # 数据传输超时
                 "retry_count": 3,
                 "backoff_base": 0.5,
                 "show_progress": True,
@@ -167,7 +174,9 @@ class ConfigLoader:
         
         return TransferConfig(
             max_data_length=transfer_cfg.get('max_data_length', 1024),
-            request_timeout=transfer_cfg.get('request_timeout', 5),
+            request_timeout=transfer_cfg.get('request_timeout', 30),
+            connection_timeout=transfer_cfg.get('connection_timeout', 30),
+            data_timeout=transfer_cfg.get('data_timeout', 5),
             retry_count=transfer_cfg.get('retry_count', 3),
             backoff_base=transfer_cfg.get('backoff_base', 0.5),
             show_progress=transfer_cfg.get('show_progress', True),

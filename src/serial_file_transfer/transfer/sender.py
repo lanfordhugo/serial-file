@@ -139,9 +139,9 @@ class FileSender:
 
         start_time = time.time()
         while True:
-            # 检查超时
-            if time.time() - start_time > self.config.request_timeout:
-                logger.error(f"等待文件大小请求超时: {self.config.request_timeout}秒")
+            # 检查超时 - 使用数据传输超时，因为这是传输过程中的步骤
+            if time.time() - start_time > self.config.data_timeout:
+                logger.error(f"等待文件大小请求超时: {self.config.data_timeout}秒")
                 return False
 
             # 读取命令
