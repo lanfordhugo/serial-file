@@ -74,7 +74,23 @@ class SerialManager:
 
             self._port = serial.Serial(**serial_kwargs)
 
-            logger.info(f"成功打开串口 {self.config.port}，超时: {used_timeout:.3f}s")
+            # 记录实际串口参数，便于诊断配置是否生效
+            try:
+                actual_baud = getattr(self._port, "baudrate", None)
+                actual_bytesize = getattr(self._port, "bytesize", None)
+                actual_parity = getattr(self._port, "parity", None)
+                actual_stopbits = getattr(self._port, "stopbits", None)
+                logger.info(
+                    "打开串口成功: %s | 实际参数 baudrate=%s bytesize=%s parity=%s stopbits=%s timeout=%.3fs",
+                    self.config.port,
+                    actual_baud,
+                    actual_bytesize,
+                    actual_parity,
+                    actual_stopbits,
+                    used_timeout,
+                )
+            except Exception:
+                logger.info(f"成功打开串口 {self.config.port}，超时: {used_timeout:.3f}s")
             return True
 
         except Exception as e:

@@ -318,6 +318,13 @@ class FileReceiver:
         try:
             # 获取文件大小
             logger.info("请求文件大小...")
+            logger.info(
+                "传输配置: max_data_length=%d request_timeout=%s retry_count=%d max_retries=%d",
+                self.config.max_data_length,
+                self.config.request_timeout,
+                self.config.retry_count,
+                self.config.max_retries,
+            )
 
             def _try_get_size():
                 if not self.send_file_size_request():
@@ -376,7 +383,8 @@ class FileReceiver:
                 self.progress_bar.finish()
 
             elapsed_time = time.time() - start_time
-            logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒")
+            speed_kbps = (self.file_size / elapsed_time) / 1024 if elapsed_time > 0 else 0
+            logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒，平均速度: {speed_kbps:.2f} KB/s")
 
             # 最终校验文件大小
             if self.save_path.stat().st_size != self.file_size:

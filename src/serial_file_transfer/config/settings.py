@@ -6,7 +6,6 @@
 """
 
 from dataclasses import dataclass
-from typing import Optional
 import serial
 
 from .constants import (
@@ -15,8 +14,6 @@ from .constants import (
     DEFAULT_MAX_DATA_LENGTH,
     DEFAULT_REQUEST_TIMEOUT,
     DEFAULT_RETRY_COUNT,
-    MIN_CHUNK_SIZE,
-    MAX_CHUNK_SIZE,
 )
 
 
@@ -53,7 +50,6 @@ class TransferConfig:
     backoff_base: float = 0.5  # 指数退避基础秒数
     show_progress: bool = True  # 是否显示进度
     max_cache_size: int = 4 * 1024 * 1024  # 触发流式读取阈值(4MB)
-    negotiated_chunk_size: Optional[int] = None  # P1-A协商的块大小，覆盖max_data_length
     max_retries: int = 5  # 最大重试次数
 
     def __post_init__(self):
@@ -68,34 +64,3 @@ class TransferConfig:
             raise ValueError("backoff_base必须大于0")
         if self.max_cache_size <= 0:
             raise ValueError("max_cache_size必须大于0")
-
-    def update_chunk_size(self, chunk_size: int) -> None:
-        """
-        更新协商的块大小 - P1-A功能
-
-        Args:
-            chunk_size: 协商得到的块大小
-        """
-        if chunk_size < MIN_CHUNK_SIZE or chunk_size > MAX_CHUNK_SIZE:
-            raise ValueError(f"块大小必须在 {MIN_CHUNK_SIZE} 到 {MAX_CHUNK_SIZE} 之间")
-
-        self.negotiated_chunk_size = chunk_size
-
-    def get_effective_chunk_size(self) -> int:
-        """
-        获取有效的块大小 - P1-A功能
-
-        Returns:
-            如果协商过块大小则返回协商值，否则返回默认的max_data_length
-        """
-        return (
-            self.negotiated_chunk_size
-            if self.negotiated_chunk_size is not None
-            else self.max_data_length
-        )
-
-    def reset_chunk_size(self) -> None:
-        """
-        重置块大小协商，回到默认值 - P1-A功能
-        """
-        self.negotiated_chunk_size = None

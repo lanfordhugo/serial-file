@@ -361,19 +361,15 @@ class FileSender:
             # 解析请求地址和长度
             addr, length = struct.unpack("<IH", cast(bytes, data))
 
-            # P1-A优化: 限制请求长度不超过协商的块大小
-            effective_chunk_size = self.config.get_effective_chunk_size()
-            if length > effective_chunk_size:
-                logger.warning(f"请求长度 {length} 超过协商块大小 {effective_chunk_size}，调整为协商值")
-                # 1.1 在 _handle_request_data() 解析 REQUEST_DATA 时，若 length > self.config.max_data_length：
+            # 限制请求长度不超过配置的块大小
+            if length > self.config.max_data_length:
+                logger.warning(f"请求长度 {length} 超过配置块大小 {self.config.max_data_length}，发送NACK")
                 payload = struct.pack(
                     "<HH", self._seq_id, self.config.max_data_length
                 )  # 使用当前seq_id，并告知建议的max_data_length
                 nack = FrameHandler.pack_frame(SerialCommand.NACK, payload)
                 if nack and self.serial_manager.write(nack):
-                    logger.debug(
-                        f"NACK len>{self.config.max_data_length}"
-                    )  # 1.2 打 DEBUG 日志
+                    logger.debug(f"NACK len>{self.config.max_data_length}")
                 else:
                     logger.error("发送 NACK 帧失败")
                 return True  # 继续等待，不发送数据
@@ -416,6 +412,13 @@ class FileSender:
 
             # 开始传输进度跟踪
             start_time = time.time()
+            logger.info(
+                "传输配置: max_data_length=%d request_timeout=%s retry_count=%d backoff_base=%.2f",
+                self.config.max_data_length,
+                self.config.request_timeout,
+                self.config.retry_count,
+                self.config.backoff_base,
+            )
 
             logger.info("开始文件传输...")
 
@@ -439,7 +442,10 @@ class FileSender:
                     self.progress_bar.finish()  # 完成时换行，并输出统计信息
 
                 elapsed_time = time.time() - start_time
-                logger.info(f"文件发送完成！用时: {elapsed_time:.2f}秒")
+                speed_kbps = (self.file_size / elapsed_time) / 1024 if elapsed_time > 0 else 0
+                logger.info(
+                    f"文件发送完成！用时: {elapsed_time:.2f}秒，平均速度: {speed_kbps:.2f} KB/s"
+                )
                 return True
             else:
                 logger.error("文件传输未完成")

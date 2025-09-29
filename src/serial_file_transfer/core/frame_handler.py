@@ -28,6 +28,42 @@ class FrameHandler:
     """数据帧处理器"""
 
     @staticmethod
+    def _get_max_data_size_for_command(cmd: int) -> int:
+        """
+        根据命令类型获取允许的最大数据长度
+        
+        Args:
+            cmd: 命令字
+            
+        Returns:
+            该命令允许的最大数据长度
+        """
+        from ..config.constants import MAX_CHUNK_SIZE, SerialCommand
+        
+        # 根据命令类型设置不同的限制
+        if cmd == SerialCommand.SEND_DATA:
+            # 数据传输命令：序号(2字节) + 数据内容(最大块大小)
+            return MAX_CHUNK_SIZE + 2
+        elif cmd == SerialCommand.REPLY_FILE_NAME:
+            # 文件名回复：长度字段(2字节) + 文件名(最大长度)
+            return MAX_FILE_NAME_LENGTH + 2
+        elif cmd in [SerialCommand.REQUEST_FILE_SIZE, SerialCommand.REPLY_FILE_SIZE]:
+            # 文件大小相关：固定4字节或特征值2字节
+            return 8
+        elif cmd in [SerialCommand.REQUEST_DATA]:
+            # 数据请求：地址(4字节) + 长度(2字节)
+            return 6
+        elif cmd in [SerialCommand.ACK, SerialCommand.NACK]:
+            # 确认命令：序号(2字节) 或 序号+建议长度(4字节)
+            return 4
+        elif cmd == SerialCommand.REQUEST_FILE_NAME:
+            # 文件名请求：特征值(2字节)
+            return 2
+        else:
+            # 未知命令使用保守上限
+            return MAX_FILE_NAME_LENGTH + MAX_CHUNK_SIZE + 8
+
+    @staticmethod
     def pack_frame(cmd: Union[SerialCommand, int], data: bytes) -> Optional[bytes]:
         """
         将命令和数据打包成数据帧
@@ -99,12 +135,14 @@ class FrameHandler:
             cmd, data_len = struct.unpack(FRAME_HEADER_FORMAT, header)
 
             # 安全性增强：检查数据长度是否在合理范围内
-            MAX_REASONABLE_DATA_SIZE = MAX_FILE_NAME_LENGTH + 1024  # 最大合理数据大小
             if data_len < 0:
                 logger.error(f"数据长度为负数: {data_len}")
                 return None
-            if data_len > MAX_REASONABLE_DATA_SIZE:
-                logger.error(f"数据长度超出合理范围: {data_len} > {MAX_REASONABLE_DATA_SIZE}")
+            
+            # 根据命令类型设置不同的长度上限
+            max_allowed_size = FrameHandler._get_max_data_size_for_command(cmd)
+            if data_len > max_allowed_size:
+                logger.error(f"数据长度超出合理范围: cmd={hex(cmd)}, 长度={data_len} > {max_allowed_size}")
                 return None
 
             # 检查数据长度是否匹配
