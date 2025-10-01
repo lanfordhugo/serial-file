@@ -16,6 +16,7 @@ from ..config.settings import TransferConfig
 from ..core.frame_handler import FrameHandler
 from ..core.serial_manager import SerialManager
 from ..core.sequence_recovery import SequenceRecoveryManager
+from ..core.protocol_state_sync import ProtocolStateSynchronizer, ProtocolState
 from ..utils.logger import get_console_logger
 from ..utils.progress import TransferProgressTracker, progress_bar, ProgressBar
 from ..utils.retry import retry_call
@@ -57,6 +58,13 @@ class FileReceiver:
             enable_recovery=self.config.enable_sequence_recovery,
             mismatch_threshold=self.config.sequence_mismatch_threshold,
             sync_timeout=self.config.sync_timeout
+        )
+
+        # 协议状态同步器 (跨设备稳定性改进)
+        self.protocol_sync = ProtocolStateSynchronizer(
+            enable_sync=True,
+            sync_interval=15.0,
+            force_sync_on_error=True
         )
 
         # 进度条实例
@@ -106,6 +114,9 @@ class FileReceiver:
             成功返回True，失败返回False
         """
         try:
+            # 设置协议状态
+            self.protocol_sync.set_local_state(ProtocolState.REQUESTING_FILENAME, "发送文件名请求")
+            
             # 协议为了保持一致，这里也使用 0x55AA 作为占位符，两字节
             request_data = struct.pack("<H", VAL_REQUEST_FILE)
             frame = FrameHandler.pack_frame(
@@ -170,7 +181,17 @@ class FileReceiver:
                 return None
 
             if cmd != SerialCommand.REPLY_FILE_NAME:
-                logger.error(f"收到错误命令: {hex(cmd)}")
+                # 检测错误命令并处理协议状态不同步
+                expected_commands = [SerialCommand.REPLY_FILE_NAME]
+                if self.protocol_sync.detect_error_command(expected_commands, cmd):
+                    logger.error(f"检测到严重协议状态不同步: 收到{hex(cmd)}, 期望{hex(SerialCommand.REPLY_FILE_NAME)}")
+                    # 强制协议重置
+                    if self.protocol_sync.force_protocol_reset(self.serial_manager):
+                        logger.info("已发送协议重置命令")
+                    else:
+                        logger.error("协议重置失败")
+                else:
+                    logger.error(f"收到错误命令: {hex(cmd)}")
                 return None
 
             # 解析变长编码的文件名

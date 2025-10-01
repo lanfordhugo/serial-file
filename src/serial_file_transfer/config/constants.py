@@ -29,6 +29,11 @@ class SerialCommand(IntEnum):
     SYNC_REQUEST = 0x67  # 序号同步请求 'g'
     SYNC_REPLY = 0x68    # 序号同步回复 'h'
 
+    # 协议状态同步命令 (跨设备稳定性改进)
+    STATE_SYNC_REQUEST = 0x69   # 协议状态同步请求 'i'
+    STATE_SYNC_REPLY = 0x6A     # 协议状态同步回复 'j'
+    PROTOCOL_RESET = 0x6B       # 协议重置命令 'k'
+
     # 文件名相关命令
     REQUEST_FILE_NAME = 0x51  # 请求文件名 'Q'
     REPLY_FILE_NAME = 0x52  # 回复文件名 'R'
@@ -74,6 +79,20 @@ class BatchTransferState(IntEnum):
     COMPLETED = 3         # 传输完成
     FAILED = 4           # 传输失败
     TERMINATED = 5       # 传输终止
+
+# 协议状态定义
+class ProtocolState(IntEnum):
+    """协议状态枚举 - 用于状态同步"""
+    IDLE = 0                    # 空闲状态
+    WAITING_FILENAME_REQUEST = 1    # 等待文件名请求
+    WAITING_SIZE_REQUEST = 2        # 等待文件大小请求  
+    WAITING_DATA_REQUEST = 3        # 等待数据请求
+    SENDING_DATA = 4               # 发送数据中
+    REQUESTING_FILENAME = 5        # 请求文件名
+    REQUESTING_SIZE = 6            # 请求文件大小
+    REQUESTING_DATA = 7            # 请求数据
+    RECEIVING_DATA = 8             # 接收数据中
+    ERROR_RECOVERY = 9             # 错误恢复中
 
 
 # P1-A 动态块大小协商相关常量

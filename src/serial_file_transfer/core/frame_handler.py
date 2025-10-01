@@ -59,6 +59,15 @@ class FrameHandler:
         elif cmd in [SerialCommand.SYNC_REQUEST, SerialCommand.SYNC_REPLY]:
             # 序号同步命令：接收端期望序号(2字节) + 发送端当前序号(2字节)
             return 4
+        elif cmd == SerialCommand.STATE_SYNC_REQUEST:
+            # 协议状态同步请求：本地状态(1字节) + 时间戳(4字节)
+            return 5
+        elif cmd == SerialCommand.STATE_SYNC_REPLY:
+            # 协议状态同步回复：本地状态(1字节) + 远程状态(1字节) + 时间戳(4字节)
+            return 7
+        elif cmd == SerialCommand.PROTOCOL_RESET:
+            # 协议重置命令：重置状态(1字节)
+            return 1
         elif cmd == SerialCommand.REQUEST_FILE_NAME:
             # 文件名请求：特征值(2字节)
             return 2
