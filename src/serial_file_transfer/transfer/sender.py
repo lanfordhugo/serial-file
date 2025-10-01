@@ -14,9 +14,9 @@ from typing import Optional, Union, cast
 from ..config.constants import SerialCommand, VAL_REQUEST_FILE, MAX_FILE_NAME_LENGTH
 from ..config.settings import TransferConfig
 from ..core.frame_handler import FrameHandler
+from ..core.frame_payload import FramePayload
 from ..core.serial_manager import SerialManager
 from ..core.sequence_recovery import SequenceRecoveryManager
-from ..core.adaptive_strategy import AdaptiveTransmissionStrategy, AdaptiveParameters
 from ..utils.logger import get_console_logger
 from ..utils.progress import TransferProgressTracker, progress_bar, ProgressBar
 from ..utils.retry import retry_call, exponential_backoff
@@ -60,21 +60,8 @@ class FileSender:
             sync_timeout=self.config.sync_timeout
         )
 
-        # 自适应传输策略 (长期优化)
-        if self.config.enable_adaptive_strategy:
-            adaptive_params = AdaptiveParameters(
-                good_threshold=self.config.adaptive_good_threshold,
-                poor_threshold=self.config.adaptive_poor_threshold,
-                bad_threshold=self.config.adaptive_bad_threshold,
-                window_size=self.config.adaptive_window_size,
-                adjustment_interval=self.config.adaptive_adjustment_interval
-            )
-            self.adaptive_strategy = AdaptiveTransmissionStrategy(
-                initial_block_size=self.config.max_data_length,
-                parameters=adaptive_params
-            )
-        else:
-            self.adaptive_strategy = None
+        # vNext: 删除自适应传输策略（改为固定块长配置）
+        # 块长由 config.max_data_length 固定指定，不再动态调整
 
         # 进度条实例
         self.progress_bar: Optional[ProgressBar] = None
@@ -327,10 +314,10 @@ class FileSender:
 
     def _send_data_package(self, addr: int, length: int) -> bool:
         """
-        发送数据包
+        发送数据包（vNext新格式：seq + offset + payload）
 
         Args:
-            addr: 起始地址
+            addr: 起始地址（即offset）
             length: 数据长度
 
         Returns:
@@ -338,24 +325,16 @@ class FileSender:
         """
         try:
             seq_id = self._seq_id & 0xFFFF
-            start_time = time.time()  # 记录开始时间用于自适应策略
+            offset = addr  # vNext: offset即请求地址
 
-            # 获取数据并加入序号前缀
-            data_segment = self.get_file_data(addr, length)
-            payload = struct.pack("<H", seq_id) + data_segment
+            # 获取文件数据
+            payload = self.get_file_data(addr, length)
 
-            frame = FrameHandler.pack_frame(SerialCommand.SEND_DATA, payload)
+            # vNext: 使用新的帧打包函数（包含offset）
+            frame = FrameHandler.pack_send_data_frame(seq_id, offset, payload)
 
             if not frame:
-                logger.error("打包数据帧失败")
-                # 记录自适应策略失败
-                if self.adaptive_strategy:
-                    self.adaptive_strategy.record_packet_result(
-                        success=False,
-                        block_size=length,
-                        transmission_time=time.time() - start_time,
-                        error_type='frame_pack'
-                    )
+                logger.error(f"打包数据帧失败: seq={seq_id} offset={offset}")
                 return False
 
             def _write_and_wait_ack() -> bool:
@@ -364,44 +343,59 @@ class FileSender:
                     return False
 
                 # 等待ACK
-                start_time = time.time()
+                ack_start = time.time()
                 port = self.serial_manager.port
                 if port is None:
                     logger.error("串口未打开，无法等待ACK")
                     return False
 
-                while time.time() - start_time < self.config.request_timeout:
-                    cmd, ack_data = FrameHandler.read_frame(port, 6 + 4)  # 增加缓冲区以支持同步命令
+                while time.time() - ack_start < self.config.request_timeout:
+                    cmd, ack_data = FrameHandler.read_frame(port, 6 + 10)
+                    
                     if cmd is None:
                         continue
+                    
                     if cmd == SerialCommand.ACK:
-                        recv_seq = struct.unpack("<H", cast(bytes, ack_data))[0]
-                        if recv_seq == seq_id:
-                            return True
-                        else:
-                            logger.debug(f"收到ACK序号不匹配: {recv_seq} != {seq_id}")
+                        # vNext: 解析ACK中的offset
+                        result = FramePayload.unpack_ack(ack_data)
+                        if result:
+                            ack_seq, ack_offset = result
+                            # vNext关键：基于offset确认
+                            if ack_offset == offset:
+                                logger.debug(f"收到ACK确认: seq={ack_seq} offset={ack_offset}")
+                                return True
+                            else:
+                                logger.warning(f"ACK偏移量不匹配: {ack_offset} != {offset}")
+                    
                     elif cmd == SerialCommand.NACK:
-                        recv_seq = struct.unpack("<H", cast(bytes, ack_data))[0]
-                        if recv_seq == seq_id:
-                            logger.warning("收到NACK，准备重传…")
-                            # 记录重传事件
-                            if self.adaptive_strategy:
-                                self.adaptive_strategy.record_retransmission()
-                            return False  # 触发重试
+                        result = FramePayload.unpack_nack(ack_data)
+                        if result:
+                            nack_seq, nack_offset = result
+                            logger.warning(f"收到NACK: seq={nack_seq} offset={nack_offset}")
+                        return False  # 触发重试
+                    
                     elif cmd == SerialCommand.SYNC_REQUEST:
-                        # 中期改进：处理序号同步请求
+                        # 处理序号同步请求
                         logger.info("收到序号同步请求")
-                        sync_result = self.sequence_recovery.handle_sync_request(self.serial_manager, cast(bytes, ack_data))
-                        if sync_result is not None:
-                            receiver_expected, _ = sync_result
-                            logger.info(f"序号同步处理完成，接收端期望序号: {receiver_expected}")
-                            # 根据接收端期望调整发送端序号
-                            self._seq_id = receiver_expected & 0xFFFF
-                            logger.info(f"发送端序号已调整为: {self._seq_id}")
+                        result = FramePayload.unpack_sync_request(ack_data)
+                        if result:
+                            sync_seq, sync_offset = result
+                            # 发送同步回复
+                            reply_data = FramePayload.pack_sync_reply(
+                                self._seq_id, offset, sync_seq
+                            )
+                            reply_frame = FrameHandler.pack_frame(
+                                SerialCommand.SYNC_REPLY, reply_data
+                            )
+                            if reply_frame:
+                                self.serial_manager.write(reply_frame)
+                                logger.info(f"已发送同步回复: seq={self._seq_id} offset={offset}")
                         continue  # 继续等待ACK/NACK
-                # 超时未收到ACK
+                
+                # ACK超时
                 return False
 
+            # 重试逻辑（保持简单，不使用自适应）
             result = retry_call(
                 _write_and_wait_ack,
                 max_retry=self.config.retry_count,
@@ -410,40 +404,13 @@ class FileSender:
             )
 
             if result:
-                # 仅在成功确认后增加send_size与序号
+                # 成功：更新序号和进度
                 self._seq_id = (self._seq_id + 1) & 0xFFFF
-                
-                # 记录自适应策略成功
-                if self.adaptive_strategy:
-                    transmission_time = time.time() - start_time
-                    self.adaptive_strategy.record_packet_result(
-                        success=True,
-                        block_size=length,
-                        transmission_time=transmission_time
-                    )
-                    
-                    # 检查是否需要调整参数
-                    adjustment = self.adaptive_strategy.adjust_parameters()
-                    if adjustment:
-                        new_block_size = adjustment['new_block_size']
-                        if new_block_size != self.config.max_data_length:
-                            logger.info(f"自适应策略调整块大小: {self.config.max_data_length} -> {new_block_size}")
-                            self.config.max_data_length = new_block_size
-                
+                self.send_size = offset + length
+                logger.debug(f"数据包发送成功: offset={offset} len={length} new_seq={self._seq_id}")
                 return True
             else:
-                logger.error("数据包多次发送仍未确认，终止传输")
-                
-                # 记录自适应策略失败
-                if self.adaptive_strategy:
-                    transmission_time = time.time() - start_time
-                    self.adaptive_strategy.record_packet_result(
-                        success=False,
-                        block_size=length,
-                        transmission_time=transmission_time,
-                        error_type='ack_timeout'
-                    )
-                
+                logger.error(f"数据包多次发送失败: offset={offset}")
                 return False
 
         except Exception as e:
@@ -489,23 +456,12 @@ class FileSender:
             # 解析请求地址和长度
             addr, length = struct.unpack("<IH", cast(bytes, data))
 
-            # 获取当前自适应的块大小
-            current_block_size = self.config.max_data_length
-            if self.adaptive_strategy:
-                current_block_size = self.adaptive_strategy.get_current_block_size()
-            
-            # 限制请求长度不超过当前块大小
-            if length > current_block_size:
-                logger.warning(f"请求长度 {length} 超过当前块大小 {current_block_size}，发送NACK")
-                payload = struct.pack(
-                    "<HH", self._seq_id, current_block_size
-                )  # 使用当前seq_id，并告知建议的块大小
-                nack = FrameHandler.pack_frame(SerialCommand.NACK, payload)
-                if nack and self.serial_manager.write(nack):
-                    logger.debug(f"NACK len>{current_block_size}")
-                else:
-                    logger.error("发送 NACK 帧失败")
-                return True  # 继续等待，不发送数据
+            # vNext: 使用固定块长配置，简化逻辑
+            # 限制请求长度不超过配置块大小
+            if length > self.config.max_data_length:
+                logger.warning(f"请求长度 {length} 超过配置块大小 {self.config.max_data_length}，调整为配置值")
+                # vNext: 不发送NACK，直接调整为配置块长
+                length = self.config.max_data_length
 
             # 验证请求有效性
             if addr + length > self.file_size:

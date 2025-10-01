@@ -95,9 +95,11 @@ class ProtocolState(IntEnum):
     ERROR_RECOVERY = 9             # 错误恢复中
 
 
-# P1-A 动态块大小协商相关常量
+# 块大小配置（固定配置，不再动态协商）
 MIN_CHUNK_SIZE: Final[int] = 512  # 最小块大小
 MAX_CHUNK_SIZE: Final[int] = 16384  # 最大块大小(16KB)
+
+# 推荐块大小映射表（仅供参考，实际由配置文件指定）
 BAUDRATE_CHUNK_SIZE_MAP: Final[Dict[int, int]] = {
     # 波特率 -> 推荐块大小映射
     9600: 512,
@@ -109,55 +111,30 @@ BAUDRATE_CHUNK_SIZE_MAP: Final[Dict[int, int]] = {
     460800: 1024,
     921600: 2048,
     1000000: 4096,
-    1500000: 4096,  # 从8192减少到4096
-    1728000: 16384,  # 高速链路使用更大块提高吞吐
+    1500000: 4096,
+    1728000: 8192,  # 注意：调整为8192，原16384可能过大
 }
 
 
-def calculate_recommended_chunk_size(baudrate: int) -> int:
+def get_recommended_chunk_size(baudrate: int) -> int:
     """
-    根据波特率计算推荐的块大小
-
+    根据波特率获取推荐的块大小（仅供参考）
+    
+    注意：这只是推荐值，实际块大小由配置文件固定指定
+    
     Args:
         baudrate: 波特率
-
+    
     Returns:
         推荐的块大小（字节）
     """
     # 精确匹配
     if baudrate in BAUDRATE_CHUNK_SIZE_MAP:
         return BAUDRATE_CHUNK_SIZE_MAP[baudrate]
-
+    
     # 找到最接近的波特率
     closest_baudrate = min(
         BAUDRATE_CHUNK_SIZE_MAP.keys(), key=lambda x: abs(x - baudrate)
     )
-
-    # 如果波特率更高，可以适当增加块大小
-    if baudrate > closest_baudrate:
-        base_size = BAUDRATE_CHUNK_SIZE_MAP[closest_baudrate]
-        # 最多翻倍，但不超过最大值
-        recommended = min(base_size * 2, MAX_CHUNK_SIZE)
-    else:
-        recommended = BAUDRATE_CHUNK_SIZE_MAP[closest_baudrate]
-
-    # 确保在有效范围内
-    return max(MIN_CHUNK_SIZE, min(recommended, MAX_CHUNK_SIZE))
-
-
-def negotiate_chunk_size(sender_recommended: int, receiver_max: int) -> int:
-    """
-    协商最终的块大小
-
-    Args:
-        sender_recommended: 发送端推荐的块大小
-        receiver_max: 接收端支持的最大块大小
-
-    Returns:
-        协商后的块大小
-    """
-    # 取两者最小值，确保接收端能处理
-    negotiated = min(sender_recommended, receiver_max)
-
-    # 确保在有效范围内
-    return max(MIN_CHUNK_SIZE, min(negotiated, MAX_CHUNK_SIZE))
+    
+    return BAUDRATE_CHUNK_SIZE_MAP[closest_baudrate]

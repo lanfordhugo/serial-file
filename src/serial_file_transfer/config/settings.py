@@ -63,13 +63,14 @@ class TransferConfig:
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT  # 序号同步超时时间
     enable_sequence_recovery: bool = True  # 是否启用序号恢复机制
     
-    # 自适应传输策略配置 (长期优化)
-    enable_adaptive_strategy: bool = True  # 是否启用自适应传输策略
-    adaptive_good_threshold: float = 0.95  # 成功率良好阈值
-    adaptive_poor_threshold: float = 0.80  # 成功率较差阈值
-    adaptive_bad_threshold: float = 0.60   # 成功率很差阈值
-    adaptive_window_size: int = 20         # 自适应策略的样本窗口大小
-    adaptive_adjustment_interval: float = 10.0  # 自适应调整间隔(秒)
+    # 已删除自适应传输策略配置（vNext版本采用固定块长配置）
+    # 如果配置文件中仍包含以下参数，将被忽略：
+    # - enable_adaptive_strategy
+    # - adaptive_good_threshold
+    # - adaptive_poor_threshold
+    # - adaptive_bad_threshold
+    # - adaptive_window_size
+    # - adaptive_adjustment_interval
 
     def __post_init__(self):
         """参数验证"""
@@ -91,13 +92,10 @@ class TransferConfig:
             raise ValueError("sequence_mismatch_threshold必须大于0")
         if self.sync_timeout <= 0:
             raise ValueError("sync_timeout必须大于0")
-        if self.adaptive_good_threshold <= 0 or self.adaptive_good_threshold > 1:
-            raise ValueError("adaptive_good_threshold必须在0-1之间")
-        if self.adaptive_poor_threshold <= 0 or self.adaptive_poor_threshold > 1:
-            raise ValueError("adaptive_poor_threshold必须在0-1之间")
-        if self.adaptive_bad_threshold <= 0 or self.adaptive_bad_threshold > 1:
-            raise ValueError("adaptive_bad_threshold必须在0-1之间")
-        if self.adaptive_window_size <= 0:
-            raise ValueError("adaptive_window_size必须大于0")
-        if self.adaptive_adjustment_interval <= 0:
-            raise ValueError("adaptive_adjustment_interval必须大于0")
+        
+        # 块长范围校验（vNext新增）
+        from .constants import MIN_CHUNK_SIZE, MAX_CHUNK_SIZE
+        if self.max_data_length < MIN_CHUNK_SIZE:
+            raise ValueError(f"max_data_length不能小于{MIN_CHUNK_SIZE}")
+        if self.max_data_length > MAX_CHUNK_SIZE:
+            raise ValueError(f"max_data_length不能大于{MAX_CHUNK_SIZE}")

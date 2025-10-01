@@ -7,15 +7,15 @@
 # 串口配置
 serial_ports:
   # 发送端串口（发送文件的一端）
-  sender_port: "COM11"
+  sender_port: "COM3"
 
   # 接收端串口（接收文件的一端）
-  receiver_port: "COM12"
+  receiver_port: "COM13"
 
 # 串口配置
 serial_config:
   # 波特率
-  baudrate: 1728000
+  baudrate: 921600 
 
   # 数据位
   bytesize: 8
@@ -28,21 +28,21 @@ serial_config:
 
   # 超时时间（秒）
   # 高速串口优化：缩短串口读取超时
-  timeout: 0.05
+  timeout: 1
 
 # 传输配置
 transfer_config:
   # 单次传输最大数据长度（字节）
   # 注意：现在使用动态校验，支持更大的数据块
   # 1728000波特率推荐使用16KB块大小以获得最佳性能
-  max_data_length: 16384
+  max_data_length: 512
 
   # 请求超时时间（秒）
   # 高速串口优化：缩短超时时间提高响应速度
-  request_timeout: 0.2
+  request_timeout: 2
 
   # 重试次数
-  retry_count: 3
+  retry_count: 5
 
   # 是否显示进度条
   show_progress: false

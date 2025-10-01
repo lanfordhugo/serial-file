@@ -14,6 +14,7 @@ from typing import Optional, Union
 from ..config.constants import SerialCommand, VAL_REQUEST_FILE, MAX_FILE_NAME_LENGTH
 from ..config.settings import TransferConfig
 from ..core.frame_handler import FrameHandler
+from ..core.frame_payload import FramePayload
 from ..core.serial_manager import SerialManager
 from ..core.sequence_recovery import SequenceRecoveryManager
 from ..core.protocol_state_sync import ProtocolStateSynchronizer, ProtocolState
@@ -245,7 +246,7 @@ class FileReceiver:
 
     def receive_data_package(self) -> bool:
         """
-        接收数据包
+        接收数据包（vNext新格式：seq + offset + payload）
 
         Returns:
             成功返回True，失败返回False
@@ -257,91 +258,97 @@ class FileReceiver:
                 6 + self.config.max_data_length,  # 帧头+CRC+最大数据长度
             )
 
-            # 如果未能解析有效帧（可能是CRC错误或超时），主动发送 NACK 请求重传
+            # 解析失败，发送NACK
             if cmd is None or data is None:
-                try:
-                    # 使用当前期望的序号通知发送端重传
-                    nack_payload = struct.pack("<H", self._expected_seq & 0xFFFF)
-                    nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_payload)
-                    if nack_frame:
-                        self.serial_manager.write(nack_frame)
-                        logger.debug("因解析失败已发送 NACK 请求重传, seq=%d", self._expected_seq)
-                except Exception as nack_e:
-                    logger.error("发送 NACK 时出错: %s", nack_e)
+                nack_data = FramePayload.pack_nack(self._expected_seq, self.recv_size)
+                nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_data)
+                if nack_frame:
+                    self.serial_manager.write(nack_frame)
+                    logger.debug(f"解析失败，发送NACK: seq={self._expected_seq} offset={self.recv_size}")
                 return False
-
-            if cmd == SerialCommand.NACK:
-                seq, corr_len = struct.unpack("<HH", data[:4])
-                logger.warning(f"收到 NACK，调整块长 {corr_len}")
-                self.config.max_data_length = corr_len
-                return False  # 触发重试
 
             if cmd != SerialCommand.SEND_DATA:
                 logger.error(f"收到错误命令: {hex(cmd)}")
                 return False
 
-            # 解析序号
-            seq_id = struct.unpack("<H", data[:2])[0]
-            payload = data[2:]
+            # vNext: 解析新格式载荷（seq + offset + payload）
+            result = FramePayload.unpack_send_data(data)
+            if not result:
+                logger.error("解析SEND_DATA载荷失败")
+                return False
 
-            # 发送ACK/NACK
-            ack_cmd = (
-                SerialCommand.ACK
-                if seq_id == self._expected_seq
-                else SerialCommand.NACK
-            )
-            ack_frame = FrameHandler.pack_frame(ack_cmd, struct.pack("<H", seq_id))
-            if ack_frame:
-                self.serial_manager.write(ack_frame)
+            seq_id, offset, payload = result
+            logger.debug(f"收到数据包: seq={seq_id} offset={offset} len={len(payload)}")
 
-            if ack_cmd == SerialCommand.NACK:
-                logger.warning(f"收到序号 {seq_id} 与预期 {self._expected_seq} 不符，发送NACK")
-                
-                # 中期改进：检查是否需要触发序号同步
+            # === vNext关键：重复帧识别 ===
+            if offset < self.recv_size:
+                # 重复帧：已接收过的数据
+                logger.warning(f"检测到重复帧: offset={offset} < recv_size={self.recv_size}")
+
+                # 幂等处理：重发ACK但丢弃数据
+                ack_data = FramePayload.pack_ack(seq_id, offset)
+                ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, ack_data)
+                if ack_frame:
+                    self.serial_manager.write(ack_frame)
+                    logger.info(f"重发ACK（重复帧）: seq={seq_id} offset={offset}")
+
+                return True  # 不算失败，继续接收
+
+            # === 偏移量验证 ===
+            if offset != self.recv_size:
+                # 偏移量跳跃或倒退
+                logger.error(f"偏移量不匹配: offset={offset} != recv_size={self.recv_size}")
+
+                # 发送NACK
+                nack_data = FramePayload.pack_nack(seq_id, self.recv_size)
+                nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_data)
+                if nack_frame:
+                    self.serial_manager.write(nack_frame)
+
+                # 检查是否需要序号同步
                 if self.sequence_recovery.record_sequence_mismatch():
-                    logger.info("尝试序号同步恢复...")
-                    
-                    # 执行序号同步
+                    logger.info("触发序号同步...")
                     synced_seq = self.sequence_recovery.perform_sequence_sync(
                         self.serial_manager,
                         self._expected_seq,
-                        self.recv_size // self.config.max_data_length  # 基于接收位置估算序号
+                        self.recv_size
                     )
-                    
                     if synced_seq is not None:
-                        logger.info(f"序号同步成功，更新期望序号: {self._expected_seq} -> {synced_seq}")
                         self._expected_seq = synced_seq & 0xFFFF
-                        # 重新检查当前包的序号
-                        if seq_id == self._expected_seq:
-                            # 序号匹配了，可以接受这个包
-                            self.sequence_recovery.reset_mismatch_counter()
-                            ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, struct.pack("<H", seq_id))
-                            if ack_frame:
-                                self.serial_manager.write(ack_frame)
-                            # 继续处理数据...
-                            self.recv_size += len(payload)
-                            if self._file_handle is not None:
-                                self._file_handle.write(payload)
-                            else:
-                                self.file_data += payload
-                            self._expected_seq = (self._expected_seq + 1) & 0xFFFF
-                            return True
-                    else:
-                        logger.warning("序号同步失败，继续使用NACK重试")
-                
+                        logger.info(f"序号同步成功: {synced_seq}")
+
                 return False
 
-            # 序号符合，保存数据
-            self.recv_size += len(payload)
+            # === 序号验证 ===
+            if seq_id != self._expected_seq:
+                logger.warning(f"序号不匹配: seq={seq_id} != expected={self._expected_seq}")
+                # 发送NACK
+                nack_data = FramePayload.pack_nack(seq_id, offset)
+                nack_frame = FrameHandler.pack_frame(SerialCommand.NACK, nack_data)
+                if nack_frame:
+                    self.serial_manager.write(nack_frame)
+                return False
 
+            # === 数据有效：写入文件 ===
+            self.recv_size += len(payload)
             if self._file_handle is not None:
                 self._file_handle.write(payload)
             else:
                 self.file_data += payload
+
+            # 发送ACK（包含offset）
+            ack_data = FramePayload.pack_ack(seq_id, offset)
+            ack_frame = FrameHandler.pack_frame(SerialCommand.ACK, ack_data)
+            if ack_frame:
+                self.serial_manager.write(ack_frame)
+                logger.debug(f"发送ACK: seq={seq_id} offset={offset}")
+
+            # 更新期望序号
             self._expected_seq = (self._expected_seq + 1) & 0xFFFF
-            
-            # 序号匹配成功，重置不匹配计数器
+
+            # 重置序号不匹配计数器
             self.sequence_recovery.reset_mismatch_counter()
+
             return True
 
         except Exception as e:

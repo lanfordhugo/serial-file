@@ -19,6 +19,7 @@ from ..config.constants import (
     MAX_FILE_NAME_LENGTH,
 )
 from .checksum import calculate_checksum
+from .frame_payload import FramePayload
 from ..utils.logger import get_console_logger
 
 logger = get_console_logger(__name__)
@@ -42,8 +43,8 @@ class FrameHandler:
         
         # 根据命令类型设置不同的限制
         if cmd == SerialCommand.SEND_DATA:
-            # 数据传输命令：序号(2字节) + 数据内容(最大块大小)
-            return MAX_CHUNK_SIZE + 2
+            # 数据传输命令（vNext）：offset(4字节) + 序号(2字节) + 数据内容(最大块大小)
+            return MAX_CHUNK_SIZE + 6
         elif cmd == SerialCommand.REPLY_FILE_NAME:
             # 文件名回复：长度字段(2字节) + 文件名(最大长度)
             return MAX_FILE_NAME_LENGTH + 2
@@ -54,11 +55,13 @@ class FrameHandler:
             # 数据请求：地址(4字节) + 长度(2字节)
             return 6
         elif cmd in [SerialCommand.ACK, SerialCommand.NACK]:
-            # 确认命令：序号(2字节) 或 序号+建议长度(4字节)
-            return 4
+            # 确认命令（vNext）：序号(2字节) + offset(4字节) = 6字节
+            return 6
         elif cmd in [SerialCommand.SYNC_REQUEST, SerialCommand.SYNC_REPLY]:
-            # 序号同步命令：接收端期望序号(2字节) + 发送端当前序号(2字节)
-            return 4
+            # 序号同步命令（vNext）：
+            # SYNC_REQUEST: seq(2) + offset(4) = 6字节
+            # SYNC_REPLY: seq(2) + offset(4) + ack(2) = 8字节
+            return 8
         elif cmd == SerialCommand.STATE_SYNC_REQUEST:
             # 协议状态同步请求：本地状态(1字节) + 时间戳(4字节)
             return 5
@@ -187,6 +190,54 @@ class FrameHandler:
             logger.error(f"解析数据帧失败: {e}")
             return None
 
+    # ==================== vNext 新增便利方法 ====================
+    
+    @staticmethod
+    def pack_send_data_frame(seq_id: int, offset: int, payload: bytes) -> Optional[bytes]:
+        """
+        打包SEND_DATA帧（vNext新格式）
+        
+        Args:
+            seq_id: 序号
+            offset: 偏移量
+            payload: 文件数据
+        
+        Returns:
+            完整的数据帧，失败返回None
+        """
+        data = FramePayload.pack_send_data(seq_id, offset, payload)
+        return FrameHandler.pack_frame(SerialCommand.SEND_DATA, data)
+    
+    @staticmethod
+    def pack_ack_frame(seq_id: int, offset: int) -> Optional[bytes]:
+        """
+        打包ACK帧（vNext新格式）
+        
+        Args:
+            seq_id: 确认的序号
+            offset: 确认的偏移量
+        
+        Returns:
+            完整的ACK帧，失败返回None
+        """
+        data = FramePayload.pack_ack(seq_id, offset)
+        return FrameHandler.pack_frame(SerialCommand.ACK, data)
+    
+    @staticmethod
+    def pack_nack_frame(seq_id: int, offset: int) -> Optional[bytes]:
+        """
+        打包NACK帧（vNext新格式）
+        
+        Args:
+            seq_id: 请求重传的序号
+            offset: 请求重传的偏移量
+        
+        Returns:
+            完整的NACK帧，失败返回None
+        """
+        data = FramePayload.pack_nack(seq_id, offset)
+        return FrameHandler.pack_frame(SerialCommand.NACK, data)
+    
     @staticmethod
     def read_frame(
         port: serial.Serial, size: int

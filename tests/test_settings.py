@@ -164,7 +164,7 @@ class TestTransferConfig:
 
         # 验证默认值（这些值在constants.py中定义）
         assert config.max_data_length == 1024  # 1KB
-        assert config.request_timeout == 5  # 5秒
+        assert config.request_timeout == 30  # 30秒（等待接收端启动）
         assert config.retry_count == 3  # 重试3次
         assert config.show_progress is True  # 显示进度
 
@@ -260,8 +260,8 @@ class TestTransferConfig:
             # 参数化测试：测试各种有效的参数组合
             (1024, 10, 0, True),  # 最小有效值
             (1024, 300, 3, True),  # 默认值
-            (65536, 120, 10, False),  # 大值
-            (512, 5, 1, True),  # 小值但有效
+            (16384, 120, 10, False),  # 大值（vNext: 最大16384）
+            (512, 5, 1, True),  # 小值但有效（vNext: 最小512）
         ],
     )
     def test_transfer_config_valid_combinations(
@@ -290,25 +290,25 @@ class TestTransferConfig:
 
         验证在边界值附近的行为
         """
-        # 测试最小有效值
+        # 测试最小有效值（vNext: 最小512字节）
         config = TransferConfig(
-            max_data_length=1,  # 最小正整数
+            max_data_length=512,  # vNext最小块长
             request_timeout=1,  # 最小正整数
             retry_count=0,  # 最小非负整数
         )
 
-        assert config.max_data_length == 1
+        assert config.max_data_length == 512
         assert config.request_timeout == 1
         assert config.retry_count == 0
 
-        # 测试较大的值
+        # 测试最大有效值（vNext: 最大16384字节）
         config = TransferConfig(
-            max_data_length=1048576,  # 1MB
+            max_data_length=16384,  # vNext最大块长
             request_timeout=3600,  # 1小时
             retry_count=100,  # 大重试次数
         )
 
-        assert config.max_data_length == 1048576
+        assert config.max_data_length == 16384
         assert config.request_timeout == 3600
         assert config.retry_count == 100
 
@@ -356,7 +356,7 @@ class TestConfigIntegration:
         )
 
         high_speed_transfer = TransferConfig(
-            max_data_length=65536,  # 大数据块
+            max_data_length=16384,  # 大数据块（vNext: 最大16384）
             request_timeout=10,  # 短请求超时
             retry_count=1,  # 少重试
             show_progress=True,
@@ -364,7 +364,7 @@ class TestConfigIntegration:
 
         # 验证高速配置
         assert high_speed_serial.baudrate == 1728000
-        assert high_speed_transfer.max_data_length == 65536
+        assert high_speed_transfer.max_data_length == 16384
 
         # 可靠传输配置
         reliable_serial = SerialConfig(
