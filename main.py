@@ -25,9 +25,11 @@ from serial_file_transfer.utils.resource_path import setup_packaged_environment
 setup_packaged_environment()
 
 from serial_file_transfer.cli.file_transfer import FileTransferCLI
-from serial_file_transfer.utils.logger import get_console_logger
+from serial_file_transfer.utils.logger import get_console_logger, setup_logger
+import logging
 
-logger = get_console_logger(__name__)
+# 临时启用DEBUG日志来分析问题
+logger = setup_logger(__name__, level=logging.DEBUG, file_output=False)
 
 # 版本信息
 VERSION = "1.4.0"

@@ -206,6 +206,7 @@ class FrameHandler:
             header_bytes = port.read(FRAME_HEADER_SIZE)
             if len(header_bytes) < FRAME_HEADER_SIZE:
                 # 未读取到足够的头部字节
+                logger.debug(f"🔍 读取帧头不足: 期望={FRAME_HEADER_SIZE}, 实际={len(header_bytes)}")
                 return None, None
 
             # 若为bytearray，显式转换为 bytes
@@ -213,8 +214,9 @@ class FrameHandler:
 
             try:
                 cmd, data_len = struct.unpack(FRAME_HEADER_FORMAT, header_bytes)
+                logger.debug(f"🔍 解析帧头成功: cmd=0x{cmd:02X}, data_len={data_len}")
             except struct.error as e:
-                logger.error(f"解析帧头失败: {e}")
+                logger.error(f"解析帧头失败: {e}, header={header_bytes.hex()}")
                 return None, None
 
             # 2. 根据声明的数据长度继续读取 数据 + CRC
@@ -233,18 +235,21 @@ class FrameHandler:
 
             if len(body_bytes) < remaining_len:
                 logger.debug(
-                    f"读取帧体不足: 期望={remaining_len} 实际={len(body_bytes)}，忽略本帧等待下一帧"
+                    f"🔍 读取帧体不足: 期望={remaining_len} 实际={len(body_bytes)}，忽略本帧等待下一帧"
                 )
                 return None, None
 
             # 3. 转换为bytes防止bytearray导致类型错误
             full_frame = bytes(header_bytes) + bytes(body_bytes)
+            logger.debug(f"🔍 读取完整帧: 总长度={len(full_frame)}, frame={full_frame.hex()}")
 
             unpacked = FrameHandler.unpack_frame(full_frame)
             if unpacked is None:
+                logger.debug(f"🔍 解包帧失败")
                 return None, None
 
             _, _, data, _ = unpacked
+            logger.debug(f"🔍 解包帧成功: cmd=0x{cmd:02X}, data_len={len(data)}")
             return cmd, data
 
         except Exception as e:

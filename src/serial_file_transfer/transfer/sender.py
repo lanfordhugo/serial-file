@@ -214,20 +214,28 @@ class FileSender:
         logger.info("等待接收端请求文件名...")
 
         start_time = time.time()
+        request_count = 0
         while True:
             # 检查超时
-            if time.time() - start_time > self.config.request_timeout:
-                logger.error(f"等待文件名请求超时: {self.config.request_timeout}秒")
+            elapsed = time.time() - start_time
+            if elapsed > self.config.request_timeout:
+                logger.error(f"等待文件名请求超时: {self.config.request_timeout}秒，共尝试接收 {request_count} 次")
                 return False
 
             # 读取命令
+            logger.debug(f"📥 等待接收文件名请求 (已等待 {elapsed:.1f}秒)...")
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 2,  # 帧头+CRC+数据(2字节固定值)
             )
 
+            request_count += 1
+
             if cmd is None or data is None:
+                logger.debug(f"📥 未接收到有效帧 (第 {request_count} 次)")
                 continue
+
+            logger.debug(f"📥 接收到帧: cmd=0x{cmd:02X}, data={data.hex() if data else 'None'}")
 
             if cmd != SerialCommand.REQUEST_FILE_NAME:
                 # 检查是否是序号同步命令（预期的协议命令）
@@ -245,7 +253,7 @@ class FileSender:
                     logger.warning(f"等待文件名请求时收到未预期命令: {hex(cmd)}")
                     continue
 
-            logger.info("收到文件名请求")
+            logger.info("📥 收到文件名请求！")
             return True
 
     def send_filename(self, filename: str) -> bool:
@@ -284,10 +292,10 @@ class FileSender:
                 return False
 
             if self.serial_manager.write(frame):
-                logger.info("已发送文件路径: %s", filename)
+                logger.info("📤 已发送文件路径: %s (cmd=0x%02X, frame_len=%d)", filename, SerialCommand.REPLY_FILE_NAME, len(frame))
                 return True
 
-            logger.error("发送文件名失败")
+            logger.error("📤 发送文件名失败")
             return False
 
         except Exception as e:

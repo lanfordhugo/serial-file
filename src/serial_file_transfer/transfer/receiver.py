@@ -124,6 +124,7 @@ class FileReceiver:
             )
 
             if frame and self.serial_manager.write(frame):
+                logger.debug(f"📤 已发送文件名请求帧: cmd=0x{SerialCommand.REQUEST_FILE_NAME:02X}, data={request_data.hex()}, frame_len={len(frame)}")
                 return True
             else:
                 logger.error("发送文件名请求失败")
@@ -172,13 +173,17 @@ class FileReceiver:
         """
         try:
             # 读取回复（变长编码：2字节长度 + 数据）
+            logger.debug(f"📥 等待接收文件名回复，期望命令: 0x{SerialCommand.REPLY_FILE_NAME:02X}")
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
                 6 + 2 + MAX_FILE_NAME_LENGTH,  # 帧头+CRC+长度字段+最大文件名长度
             )
 
             if cmd is None or data is None:
+                logger.debug("📥 未接收到有效帧 (cmd或data为None)")
                 return None
+
+            logger.debug(f"📥 接收到帧: cmd=0x{cmd:02X}, data_len={len(data) if data else 0}")
 
             if cmd != SerialCommand.REPLY_FILE_NAME:
                 # 检测错误命令并处理协议状态不同步

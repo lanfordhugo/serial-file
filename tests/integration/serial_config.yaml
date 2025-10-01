@@ -7,10 +7,10 @@
 # 串口配置
 serial_ports:
   # 发送端串口（发送文件的一端）
-  sender_port: "COM3"
+  sender_port: "COM11"
 
   # 接收端串口（接收文件的一端）
-  receiver_port: "COM8"
+  receiver_port: "COM12"
 
 # 串口配置
 serial_config:
