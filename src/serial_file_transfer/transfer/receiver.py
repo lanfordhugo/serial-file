@@ -356,7 +356,13 @@ class FileReceiver:
             return False
 
     def _receive_chunk_with_retry(self, addr: int, length: int) -> bool:
-        """带硬件恢复机制的重试逻辑接收单个数据块"""
+        """带强化串口重启机制的重试逻辑接收单个数据块
+        
+        恢复策略：
+        1. 第一轮：快速重试（3次，约0.3-0.6秒）
+        2. 立即串口重启：close → sleep → open
+        3. 第二轮：重启后重试（5次，约1-2秒）
+        """
         import time
 
         def _try_receive():
@@ -372,7 +378,7 @@ class FileReceiver:
                 logger.warning(f"接收地址 {addr} 的数据包超时或失败")
                 return False
 
-        # 第一轮：快速重试（总共约1-2秒）
+        # ===== 第一轮：快速重试 =====
         success = retry_call(
             _try_receive,
             max_retry=3,
@@ -383,20 +389,39 @@ class FileReceiver:
         if success:
             return True
         
-        # 硬件恢复：清理缓冲区 + 休息让硬件恢复
-        logger.info(f"地址 {addr} 快速重试失败，进行硬件恢复（1秒）...")
-        time.sleep(1.0)
+        # ===== 串口重启恢复（跳过无效的清缓冲保守重试）=====
+        logger.warning(f"地址 {addr} 快速重试失败，立即执行串口重启恢复...")
         
         try:
-            # 清理串口输入输出缓冲区，消除可能的数据残留
-            self.serial_manager.port.reset_input_buffer()
-            self.serial_manager.port.reset_output_buffer()
-            logger.debug(f"地址 {addr} 已清理串口缓冲区")
+            # 记录当前串口配置
+            original_baudrate = self.serial_manager.config.baudrate
+            logger.info(f"准备重启串口（当前波特率: {original_baudrate}）...")
+            
+            # 关闭串口
+            self.serial_manager.close()
+            logger.debug("串口已关闭")
+            time.sleep(1.0)  # 等待串口完全关闭和硬件稳定
+            
+            # 重新打开串口
+            if self.serial_manager.open():
+                logger.info(f"串口重启成功（波特率: {self.serial_manager.config.baudrate}）")
+                time.sleep(0.5)  # 等待串口初始化稳定
+            else:
+                logger.error("串口重启失败，无法继续传输")
+                return False
+                
         except Exception as e:
-            logger.debug(f"清理缓冲区时发生异常: {e}")
+            logger.error(f"串口重启过程发生异常: {e}")
+            # 尝试确保串口处于可用状态
+            try:
+                if not self.serial_manager.is_open:
+                    self.serial_manager.open()
+            except:
+                pass
+            return False
         
-        # 第二轮：保守重试（约2-4秒）
-        logger.info(f"地址 {addr} 硬件恢复完成，开始保守重试...")
+        # ===== 第二轮：串口重启后重试 =====
+        logger.info(f"地址 {addr} 串口重启完成，开始重启后重试...")
         success = retry_call(
             _try_receive,
             max_retry=5,
@@ -405,9 +430,9 @@ class FileReceiver:
         )
         
         if success:
-            logger.info(f"地址 {addr} 硬件恢复后传输成功")
+            logger.info(f"✓ 地址 {addr} 串口重启后传输成功")
         else:
-            logger.error(f"地址 {addr} 经过硬件恢复和保守重试后仍然失败")
+            logger.error(f"✗ 地址 {addr} 串口重启后仍然失败，该地址数据块无法传输")
         
         return success if success is not None else False
 

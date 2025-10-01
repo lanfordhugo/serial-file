@@ -58,8 +58,9 @@ class SerialFileTransferApp:
         print("请选择操作：")
         print("1. 🚀 智能发送文件/文件夹")
         print("2. 📡 智能接收文件")
-        print("3. 查看帮助")
-        print("4. 退出程序")
+        print("3. ⚙️  设置波特率")
+        print("4. 查看帮助")
+        print("5. 退出程序")
         print()
 
     def show_help(self):
@@ -102,16 +103,16 @@ class SerialFileTransferApp:
         """获取用户选择"""
         while True:
             try:
-                choice = input("请输入选择 (1-4): ").strip()
-                if choice in ["1", "2", "3", "4"]:
+                choice = input("请输入选择 (1-5): ").strip()
+                if choice in ["1", "2", "3", "4", "5"]:
                     return choice
                 else:
-                    print("❌ 无效选择，请输入 1-4 之间的数字")
+                    print("❌ 无效选择，请输入 1-5 之间的数字")
             except KeyboardInterrupt:
                 print("\n\n👋 用户取消操作，程序退出")
-                return "4"
+                return "5"
             except EOFError:
-                return "4"
+                return "5"
 
     def handle_smart_send(self):
         """处理智能发送操作"""
@@ -147,6 +148,105 @@ class SerialFileTransferApp:
         finally:
             print()
 
+    def handle_baudrate_setting(self):
+        """处理波特率设置"""
+        print("\n" + "=" * 50)
+        print("⚙️  波特率设置")
+        print("=" * 50)
+        print()
+        print("请选择波特率（推荐从低到高测试稳定性）：")
+        print()
+        print("1. 460800  (推荐 ⭐⭐⭐⭐⭐) - 稳定可靠，适合长距离传输")
+        print("2. 921600  (推荐 ⭐⭐⭐)     - 速度较快，可能在部分硬件上不稳定")
+        print("3. 1728000 (推荐 ⭐⭐)       - 高速传输，需要优质硬件支持")
+        print()
+        print("💡 提示：")
+        print("   - 如遇传输失败，建议降低波特率")
+        print("   - 默认推荐使用 460800（选项1）")
+        print("   - 921600 及以上需要硬件流控支持（如不支持易失败）")
+        print()
+        
+        baudrate_map = {
+            "1": 460800,
+            "2": 921600,
+            "3": 1728000
+        }
+        
+        while True:
+            try:
+                choice = input("请选择波特率 (1-3, 默认1): ").strip()
+                if not choice:
+                    choice = "1"  # 默认选项
+                
+                if choice in baudrate_map:
+                    baudrate = baudrate_map[choice]
+                    print(f"\n✅ 已选择波特率: {baudrate} bps")
+                    
+                    # 更新配置文件
+                    import yaml
+                    config_file = Path("config/transfer.yaml")
+                    
+                    try:
+                        with open(config_file, "r", encoding="utf-8") as f:
+                            config = yaml.safe_load(f)
+                        
+                        # 更新波特率
+                        if "serial" not in config:
+                            config["serial"] = {}
+                        config["serial"]["baudrate"] = baudrate
+                        
+                        # 写回配置文件
+                        with open(config_file, "w", encoding="utf-8") as f:
+                            yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+                        
+                        print(f"✅ 配置已更新: config/transfer.yaml")
+                        print(f"   波特率设置为: {baudrate} bps")
+                        
+                        # 根据波特率给出块长建议
+                        if baudrate == 460800:
+                            recommended_block = 2048
+                            print(f"\n💡 建议块长: {recommended_block} 字节（已自动设置）")
+                            if "transfer" not in config:
+                                config["transfer"] = {}
+                            config["transfer"]["max_data_length"] = recommended_block
+                        elif baudrate == 921600:
+                            recommended_block = 512
+                            print(f"\n💡 建议块长: {recommended_block} 字节（已自动设置）")
+                            print("   ⚠️  此波特率可能不稳定，如遇失败请降至 460800")
+                            if "transfer" not in config:
+                                config["transfer"] = {}
+                            config["transfer"]["max_data_length"] = recommended_block
+                        else:  # 1728000
+                            recommended_block = 8192
+                            print(f"\n💡 建议块长: {recommended_block} 字节（已自动设置）")
+                            print("   ⚠️  高速传输需要优质硬件，如遇失败请降至 460800")
+                            if "transfer" not in config:
+                                config["transfer"] = {}
+                            config["transfer"]["max_data_length"] = recommended_block
+                        
+                        # 再次写回配置文件（包含块长更新）
+                        with open(config_file, "w", encoding="utf-8") as f:
+                            yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+                        
+                    except Exception as e:
+                        logger.error(f"更新配置文件失败: {e}")
+                        print(f"\n❌ 更新配置文件失败: {e}")
+                        print("   请手动编辑 config/transfer.yaml")
+                    
+                    print()
+                    input("按回车键返回主菜单...")
+                    print()
+                    break
+                else:
+                    print("❌ 无效选择，请输入 1-3")
+                    
+            except KeyboardInterrupt:
+                print("\n\n👋 取消设置，返回主菜单")
+                print()
+                break
+            except EOFError:
+                break
+
 
 
     def run_interactive(self):
@@ -162,8 +262,10 @@ class SerialFileTransferApp:
             elif choice == "2":
                 self.handle_smart_receive()
             elif choice == "3":
-                self.show_help()
+                self.handle_baudrate_setting()
             elif choice == "4":
+                self.show_help()
+            elif choice == "5":
                 print("\n👋 感谢使用，程序退出！")
                 self.running = False
 
