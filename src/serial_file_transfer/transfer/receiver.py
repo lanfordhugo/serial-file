@@ -33,6 +33,7 @@ class FileReceiver:
         serial_manager: SerialManager,
         save_path: Optional[Union[str, Path]] = None,
         config: Optional[TransferConfig] = None,
+        progress_callback: Optional[callable] = None,
     ):
         """
         初始化文件接收器
@@ -41,9 +42,11 @@ class FileReceiver:
             serial_manager: 串口管理器
             save_path: 文件保存路径（可选）
             config: 传输配置（可选）
+            progress_callback: 进度回调函数，签名为 callback(current, total)
         """
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
+        self.progress_callback = progress_callback
 
         # 接收状态
         self.save_path = Path(save_path) if save_path else None
@@ -506,6 +509,10 @@ class FileReceiver:
                 # 更新进度条
                 if self.config.show_progress and self.progress_bar:
                     self.progress_bar.update(self.recv_size)
+                
+                # 调用进度回调
+                if self.progress_callback:
+                    self.progress_callback(self.recv_size, self.file_size)
 
             # 确保所有数据写入磁盘
             if self._file_handle and not self._file_handle.closed:

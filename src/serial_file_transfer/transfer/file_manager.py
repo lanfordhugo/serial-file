@@ -29,6 +29,7 @@ class SenderFileManager:
         folder_path: Union[str, Path],
         serial_manager: SerialManager,
         config: Optional[TransferConfig] = None,
+        progress_callback: Optional[callable] = None,
     ):
         """
         初始化发送端文件管理器
@@ -37,13 +38,15 @@ class SenderFileManager:
             folder_path: 要发送的文件夹路径
             serial_manager: 串口管理器
             config: 传输配置（可选）
+            progress_callback: 进度回调函数，签名为 callback(current, total)
         """
         self.folder_path = Path(folder_path)
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
+        self.progress_callback = progress_callback
 
         self.file_list: List[str] = []
-        self.sender = FileSender(serial_manager, config=config)
+        self.sender = FileSender(serial_manager, config=config, progress_callback=progress_callback)
 
         # 扫描文件
         self._scan_files()
@@ -149,6 +152,7 @@ class ReceiverFileManager:
         folder_path: Union[str, Path],
         serial_manager: SerialManager,
         config: Optional[TransferConfig] = None,
+        progress_callback: Optional[callable] = None,
     ):
         """
         初始化接收端文件管理器
@@ -157,12 +161,14 @@ class ReceiverFileManager:
             folder_path: 文件保存文件夹路径
             serial_manager: 串口管理器
             config: 传输配置（可选）
+            progress_callback: 进度回调函数，签名为 callback(current, total)
         """
         self.folder_path = Path(folder_path)
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
+        self.progress_callback = progress_callback
 
-        self.receiver = FileReceiver(serial_manager, config=config)
+        self.receiver = FileReceiver(serial_manager, config=config, progress_callback=progress_callback)
         
         # 批量传输状态机
         self.state = BatchTransferState.IDLE

@@ -23,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from serial_file_transfer.core.serial_manager import SerialManager
 from serial_file_transfer.config.settings import SerialConfig, TransferConfig
+from serial_file_transfer.config.config_loader import ConfigLoader
 from serial_file_transfer.transfer.sender import FileSender
 from serial_file_transfer.transfer.receiver import FileReceiver
+from serial_file_transfer.transfer.file_manager import SenderFileManager, ReceiverFileManager
 import logging
 
 
@@ -72,6 +74,11 @@ class SerialTransferGUI:
         # 传输状态
         self.is_transferring = False
         self.transfer_thread: Optional[threading.Thread] = None
+        
+        # 进度跟踪
+        self.current_progress = 0.0
+        self.total_bytes = 0
+        self.transferred_bytes = 0
         
         # 日志系统（全局共享，但每个视图有独立的显示组件）
         self.log_queue: queue.Queue = queue.Queue()
@@ -816,7 +823,26 @@ class SerialTransferGUI:
             if file_path_var:
                 file_path_var.set(folder)
                 self.saved_file_path = folder
+                
+                # 列出文件夹第一层的文件（最多10个）
+                folder_path = Path(folder)
+                files = [f for f in folder_path.iterdir() if f.is_file()]
+                file_count = len(files)
+                
                 self.log_info(f"已选择文件夹: {folder}")
+                
+                if file_count > 0:
+                    # 显示前10个文件
+                    display_files = files[:10]
+                    self.log_info(f"  包含 {file_count} 个文件:")
+                    for idx, file in enumerate(display_files, 1):
+                        self.log_info(f"    {idx}. {file.name}")
+                    
+                    # 如果超过10个，显示省略信息
+                    if file_count > 10:
+                        self.log_info(f"    ... 还有 {file_count - 10} 个文件未显示")
+                else:
+                    self.log_warning(f"  警告: 文件夹中没有文件")
 
     def select_recv_dir(self) -> None:
         """选择接收目录"""
@@ -837,18 +863,6 @@ class SerialTransferGUI:
             "4": 1728000
         }
         return baudrate_map.get(self.saved_baudrate, 460800)
-
-    def get_block_size(self) -> int:
-        """根据波特率获取推荐块长"""
-        baudrate = self.get_baudrate()
-        if baudrate == 115200:
-            return 512
-        elif baudrate == 460800:
-            return 2048
-        elif baudrate == 921600:
-            return 512
-        else:  # 1728000
-            return 8192
 
     def get_selected_port(self) -> Optional[str]:
         """获取选中的串口"""
@@ -934,23 +948,19 @@ class SerialTransferGUI:
         """
         try:
             port = self.get_selected_port()
-            baudrate = self.get_baudrate()
-            block_size = self.get_block_size()
+            
+            # 使用ConfigLoader加载配置（从config/transfer.yaml读取）
+            serial_config = ConfigLoader.create_serial_config(port)
+            transfer_config = ConfigLoader.create_transfer_config()
+            
+            # 如果用户选择了非默认波特率，覆盖配置文件设置
+            user_baudrate = self.get_baudrate()
+            if serial_config.baudrate != user_baudrate:
+                serial_config.baudrate = user_baudrate
+                self.log_info(f"使用用户指定波特率: {user_baudrate}")
 
-            self.log_info(f"开始传输 - 模式: {mode}, 串口: {port}, 波特率: {baudrate}")
-
-            # 配置串口
-            serial_config = SerialConfig(
-                port=port, baudrate=baudrate, timeout=1.0
-            )
-
-            # 配置传输参数
-            transfer_config = TransferConfig(
-                max_data_length=block_size,
-                request_timeout=2,
-                retry_count=5,
-                show_progress=False,
-            )
+            self.log_info(f"开始传输 - 模式: {mode}, 串口: {port}, 波特率: {serial_config.baudrate}")
+            self.log_info(f"传输参数 - 块大小: {transfer_config.max_data_length}, 超时: {transfer_config.request_timeout}s")
 
             serial_manager = SerialManager(serial_config)
 
@@ -960,20 +970,62 @@ class SerialTransferGUI:
                 if not file_path_var:
                     return
                 file_path = file_path_var.get()
+                path_obj = Path(file_path)
                 
-                sender = FileSender(serial_manager, transfer_config)
-
                 serial_manager.open()
                 self.log_info(f"串口已打开: {port}")
 
-                if Path(file_path).is_file():
-                    # 单文件传输
+                success = True
+                if path_obj.is_file():
+                    # 单文件传输 - 与CLI保持一致的流程
                     self.log_info(f"开始发送文件: {file_path}")
-                    success = sender.send_file(file_path)
-                else:
-                    # 文件夹传输
+                    
+                    # 创建FileSender时传入文件路径和进度回调
+                    sender = FileSender(
+                        serial_manager, 
+                        file_path, 
+                        transfer_config,
+                        progress_callback=self.update_progress
+                    )
+                    
+                    # 等待接收端请求文件名
+                    self.log_info("等待接收端请求文件名...")
+                    if not sender.wait_for_filename_request():
+                        self.log_error("❌ 等待文件名请求超时")
+                        success = False
+                    else:
+                        # 发送文件名（只发送文件名，不包含路径）
+                        import os
+                        filename = os.path.basename(file_path)
+                        self.log_info(f"发送文件名: {filename}")
+                        if not sender.send_filename(filename):
+                            self.log_error("❌ 发送文件名失败")
+                            success = False
+                        else:
+                            # 开始传输
+                            success = sender.start_transfer()
+                elif path_obj.is_dir():
+                    # 文件夹传输 - 复用SenderFileManager
                     self.log_info(f"开始发送文件夹: {file_path}")
-                    success = sender.send_folder(file_path)
+                    
+                    # 使用SenderFileManager处理批量发送（与CLI保持一致）
+                    file_manager = SenderFileManager(
+                        folder_path=file_path,
+                        serial_manager=serial_manager,
+                        config=transfer_config,
+                        progress_callback=self.update_progress
+                    )
+                    
+                    # 批量发送会自动处理文件遍历、发送、进度等
+                    success = file_manager.start_batch_send()
+                    
+                    if success:
+                        self.log_info("✅ 文件夹发送完成")
+                    else:
+                        self.log_error("❌ 文件夹发送失败")
+                else:
+                    self.log_error(f"路径无效: {file_path}")
+                    success = False
 
                 serial_manager.close()
 
@@ -997,13 +1049,21 @@ class SerialTransferGUI:
                 recv_dir = Path(recv_dir_var.get())
                 recv_dir.mkdir(parents=True, exist_ok=True)
 
-                receiver = FileReceiver(serial_manager, transfer_config)
-
                 serial_manager.open()
                 self.log_info(f"串口已打开: {port}")
                 self.log_info(f"等待接收文件到: {recv_dir}")
-
-                success = receiver.start_transfer()
+                
+                # 使用ReceiverFileManager处理批量接收（与CLI保持一致）
+                # 自动适配单文件和文件夹传输
+                receiver_manager = ReceiverFileManager(
+                    folder_path=recv_dir,
+                    serial_manager=serial_manager,
+                    config=transfer_config,
+                    progress_callback=self.update_progress
+                )
+                
+                self.log_info("📡 启动统一批量接收模式（自动适配单文件/文件夹）")
+                success = receiver_manager.start_batch_receive()
 
                 serial_manager.close()
 
@@ -1013,16 +1073,28 @@ class SerialTransferGUI:
                     progress_var = self.current_view_widgets.get("progress_var")
                     if progress_var:
                         progress_var.set(100)
-                    self.root.after(0, lambda: messagebox.showinfo("成功", f"文件已保存到: {recv_dir}"))
+                    
+                    # 统计接收的文件
+                    received_files = list(recv_dir.rglob("*"))
+                    received_files = [f for f in received_files if f.is_file()]
+                    file_count = len(received_files)
+                    
+                    self.log_info(f"📋 共接收 {file_count} 个文件")
+                    self.root.after(0, lambda: messagebox.showinfo("成功", f"文件已保存到: {recv_dir}\n共接收 {file_count} 个文件"))
                 else:
                     self.log_error("❌ 接收失败")
                     self.update_status("接收失败", self.error_color)
                     self.root.after(0, lambda: messagebox.showerror("失败", "文件接收失败，请查看日志"))
 
         except Exception as e:
-            self.log_error(f"传输异常: {e}")
+            error_msg = f"传输异常: {e}"
+            self.log_error(error_msg)
             self.update_status("传输异常", self.error_color)
-            self.root.after(0, lambda: messagebox.showerror("错误", f"传输过程发生异常:\n{e}"))
+            # 捕获异常消息到局部变量，避免闭包问题
+            error_detail = str(e)
+            def show_error():
+                messagebox.showerror("错误", f"传输过程发生异常:\n{error_detail}")
+            self.root.after(0, show_error)
 
         finally:
             self.is_transferring = False
@@ -1053,6 +1125,43 @@ class SerialTransferGUI:
         status_label = self.current_view_widgets.get("status_label")
         if status_label:
             self.root.after(0, lambda: status_label.config(text=text, fg=color))
+    
+    def update_progress(self, current: int, total: int, status_text: str = "") -> None:
+        """更新进度条
+        
+        Args:
+            current: 当前进度值（字节数）
+            total: 总进度值（字节数）
+            status_text: 状态文本（可选）
+        """
+        if total <= 0:
+            return
+        
+        progress_percent = min(100.0, (current / total) * 100)
+        self.current_progress = progress_percent
+        self.transferred_bytes = current
+        self.total_bytes = total
+        
+        # 更新进度条
+        progress_var = self.current_view_widgets.get("progress_var")
+        if progress_var:
+            self.root.after(0, lambda: progress_var.set(progress_percent))
+        
+        # 更新状态文本
+        if status_text:
+            self.update_status(status_text, self.primary_color)
+        else:
+            # 默认显示百分比和传输量
+            current_mb = current / (1024 * 1024)
+            total_mb = total / (1024 * 1024)
+            if total_mb < 1:
+                # 小于1MB时显示KB
+                current_kb = current / 1024
+                total_kb = total / 1024
+                status_msg = f"{progress_percent:.1f}% ({current_kb:.1f}/{total_kb:.1f} KB)"
+            else:
+                status_msg = f"{progress_percent:.1f}% ({current_mb:.2f}/{total_mb:.2f} MB)"
+            self.update_status(status_msg, self.primary_color)
 
     # ==================== 日志系统 ====================
     

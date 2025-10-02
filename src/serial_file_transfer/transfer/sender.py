@@ -32,6 +32,7 @@ class FileSender:
         serial_manager: SerialManager,
         file_path: Optional[Union[str, Path]] = None,
         config: Optional[TransferConfig] = None,
+        progress_callback: Optional[callable] = None,
     ):
         """
         初始化文件发送器
@@ -40,9 +41,11 @@ class FileSender:
             serial_manager: 串口管理器
             file_path: 要发送的文件路径（可选）
             config: 传输配置（可选）
+            progress_callback: 进度回调函数，签名为 callback(current, total)
         """
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
+        self.progress_callback = progress_callback
 
         # 传输状态
         self.send_size = 0
@@ -524,6 +527,10 @@ class FileSender:
                 # 显示进度
                 if self.config.show_progress and self.progress_bar:
                     self.progress_bar.update(self.send_size)
+                
+                # 调用进度回调
+                if self.progress_callback:
+                    self.progress_callback(self.send_size, self.file_size)
 
             # 检查是否传输完成
             if self.send_size >= self.file_size:
