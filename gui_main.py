@@ -17,6 +17,7 @@ import threading
 import queue
 import time
 from typing import Optional, Dict, Any
+from enum import Enum
 
 # 添加src路径到Python路径
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -28,6 +29,16 @@ from serial_file_transfer.transfer.sender import FileSender
 from serial_file_transfer.transfer.receiver import FileReceiver
 from serial_file_transfer.transfer.file_manager import SenderFileManager, ReceiverFileManager
 import logging
+
+
+class ReceiveUIState(Enum):
+    """接收界面状态枚举"""
+    READY = "就绪"
+    CONFIGURING = "配置中"
+    WAITING = "等待连接"
+    RECEIVING = "正在接收"
+    COMPLETED = "接收完成"
+    FAILED = "监听失败"
 
 
 class SerialTransferGUI:
@@ -74,6 +85,11 @@ class SerialTransferGUI:
         # 传输状态
         self.is_transferring = False
         self.transfer_thread: Optional[threading.Thread] = None
+
+        # 接收状态管理
+        self.receive_state = ReceiveUIState.READY
+        self.receive_thread: Optional[threading.Thread] = None
+        self.receive_manager: Optional[ReceiverFileManager] = None
         
         # 进度跟踪
         self.current_progress = 0.0
@@ -135,21 +151,28 @@ class SerialTransferGUI:
             def emit(self, record: logging.LogRecord) -> None:
                 self.log_queue.put(self.format(record))
 
-        # 配置根日志记录器
+        # 配置根日志记录器和serial_file_transfer专用日志器
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.INFO)
+
+        # 配置serial_file_transfer专用日志器
+        self.serial_logger = logging.getLogger("serial_file_transfer")
+        self.serial_logger.setLevel(logging.INFO)
 
         # 清除现有处理器
         for handler in self.logger.handlers[:]:
             self.logger.removeHandler(handler)
+        for handler in self.serial_logger.handlers[:]:
+            self.serial_logger.removeHandler(handler)
 
-        # 添加队列处理器
+        # 添加队列处理器到两个logger
         queue_handler = QueueHandler(self.log_queue)
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
         )
         queue_handler.setFormatter(formatter)
         self.logger.addHandler(queue_handler)
+        self.serial_logger.addHandler(queue_handler)
 
     # ==================== 视图切换核心方法 ====================
     
@@ -159,19 +182,150 @@ class SerialTransferGUI:
         if self.log_update_timer:
             self.root.after_cancel(self.log_update_timer)
             self.log_update_timer = None
-        
+
+        # 停止接收监听线程
+        self._stop_receive_monitoring()
+
         # 销毁所有子组件
         for widget in self.root.winfo_children():
             widget.destroy()
-        
+
         # 清空组件引用
         self.current_view_widgets.clear()
-    
+
+    def _stop_receive_monitoring(self) -> None:
+        """停止接收监听"""
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_state = ReceiveUIState.FAILED
+            # 通知线程停止（通过设置状态）
+            self.is_transferring = False
+            self.receive_thread.join(timeout=2.0)
+            self.log_info("接收监听已停止")
+
+        self.receive_thread = None
+        self.receive_manager = None
+        self.receive_state = ReceiveUIState.READY
+
+    def _start_receive_monitoring(self) -> None:
+        """开始接收监听"""
+        # 如果正在监听中，禁止重复启动
+        if self.receive_thread and self.receive_thread.is_alive():
+            messagebox.showwarning("警告", "监听已在进行中")
+            return
+
+        # 验证配置
+        port = self.get_selected_port()
+        if not port:
+            messagebox.showerror("错误", "请选择串口")
+            return
+
+        recv_dir_var = self.current_view_widgets.get("recv_dir_var")
+        if not recv_dir_var:
+            return
+        recv_dir = recv_dir_var.get()
+        if not recv_dir:
+            messagebox.showerror("错误", "请选择接收文件保存目录")
+            return
+
+        # 如果已有监听线程，先停止
+        self._stop_receive_monitoring()
+
+        # 更新UI状态
+        start_button = self.current_view_widgets.get("start_button")
+        if start_button:
+            start_button.config(state="disabled", text="🔄 监听中...")
+
+        self.receive_state = ReceiveUIState.WAITING
+        self.update_status("🔄 等待连接中...", self.primary_color)
+
+        # 在后台线程中启动接收监听
+        self.receive_thread = threading.Thread(
+            target=self._receive_monitor_worker,
+            args=(port, Path(recv_dir)),
+            daemon=True
+        )
+        self.receive_thread.start()
+
+        self.log_info(f"开始监听串口 {port}，保存目录: {recv_dir}")
+
+    def _receive_monitor_worker(self, port: str, save_path: Path) -> None:
+        """接收监听工作线程"""
+        try:
+            # 创建串口配置
+            serial_config = ConfigLoader.create_serial_config(port)
+            transfer_config = ConfigLoader.create_transfer_config()
+
+            # 如果用户选择了非默认波特率，覆盖配置文件设置
+            user_baudrate = self.get_baudrate()
+            if serial_config.baudrate != user_baudrate:
+                serial_config.baudrate = user_baudrate
+                self.log_info(f"使用用户指定波特率: {user_baudrate}")
+
+            self.log_info(f"监听参数 - 串口: {port}, 波特率: {serial_config.baudrate}")
+
+            # 创建串口管理器
+            serial_manager = SerialManager(serial_config)
+            serial_manager.open()
+            self.log_info(f"串口已打开: {port}")
+
+            # 创建接收管理器
+            self.receive_manager = ReceiverFileManager(
+                folder_path=save_path,
+                serial_manager=serial_manager,
+                config=transfer_config,
+                progress_callback=self._get_progress_callback("receive")
+            )
+
+            # 启动批量接收（阻塞调用，会持续监听）
+            self.log_info("📡 启动持续监听模式...")
+            success = self.receive_manager.start_batch_receive()
+
+            serial_manager.close()
+
+            if success:
+                self.receive_state = ReceiveUIState.COMPLETED
+                self.log_info("✅ 接收完成")
+                self.root.after(0, lambda: self.update_status("✅ 接收完成", self.success_color))
+                self.root.after(0, lambda: messagebox.showinfo("成功", f"文件已保存到: {save_path}"))
+            else:
+                self.receive_state = ReceiveUIState.FAILED
+                self.log_error("❌ 接收失败")
+                self.root.after(0, lambda: self.update_status("❌ 监听失败", self.error_color))
+                self.root.after(0, lambda: messagebox.showerror("失败", "文件接收失败，请查看日志"))
+
+        except Exception as e:
+            error_msg = f"监听异常: {e}"
+            self.log_error(error_msg)
+            self.receive_state = ReceiveUIState.FAILED
+            self.root.after(0, lambda: self.update_status("❌ 监听失败", self.error_color))
+            self.root.after(0, lambda msg=error_msg: messagebox.showerror("错误", f"监听过程发生异常:\n{msg}"))
+
+        finally:
+            # 重置UI状态
+            self.root.after(0, self._reset_receive_ui)
+
+    def _reset_receive_ui(self) -> None:
+        """重置接收UI状态"""
+        start_button = self.current_view_widgets.get("start_button")
+        if start_button:
+            start_button.config(state="normal", text="🔄 开始监听")
+
+        # 重置接收状态
+        if self.receive_state not in [ReceiveUIState.WAITING, ReceiveUIState.RECEIVING]:
+            self.receive_state = ReceiveUIState.READY
+            self.update_status("就绪", self.text_secondary)
+
+    def _get_progress_callback(self, mode: str):
+        """获取带模式参数的进度回调函数"""
+        def progress_callback(current: int, total: int, status_text: str = ""):
+            self.update_progress(current, total, status_text, mode)
+        return progress_callback
+
     def show_mode_selection(self) -> None:
         """显示模式选择界面"""
-        # 如果正在传输，禁止返回
-        if self.is_transferring:
-            messagebox.showwarning("警告", "传输正在进行中，请等待完成或停止当前传输")
+        # 如果正在传输或接收监听，禁止返回
+        if self.is_transferring or (self.receive_thread and self.receive_thread.is_alive()):
+            messagebox.showwarning("警告", "传输或监听正在进行中，请等待完成")
             return
             
         self.clear_current_view()
@@ -396,13 +550,50 @@ class SerialTransferGUI:
         port_frame.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=12)
         port_frame.columnconfigure(0, weight=1)
         
-        port_var = tk.StringVar(value=self.saved_port or "")
+        # 使用占位提示，提示用户选择串口
+        port_var = tk.StringVar(value=self.saved_port or "请选择串口...")
         port_combo = ttk.Combobox(
             port_frame, textvariable=port_var, state="readonly",
             font=("微软雅黑", 11), width=50, height=10
         )
         port_combo.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
-        
+
+        # 绑定串口选择事件，检查传输状态和串口可用性
+        def on_port_select(event):
+            if self.is_transferring:
+                messagebox.showwarning("警告", "传输过程中无法修改串口配置")
+                # 恢复之前的值
+                if self.saved_port:
+                    for idx, port in enumerate(port_combo["values"]):
+                        if port.startswith(self.saved_port):
+                            port_combo.current(idx)
+                            break
+                return
+
+            # 获取选择的串口
+            selected = port_var.get()
+            if selected and "未检测到串口" not in selected and selected != "请选择串口...":
+                port_name = selected.split(" - ")[0].strip()
+
+                # 测试串口可用性
+                self.log_info(f"正在测试串口 {port_name} 的可用性...")
+                available, error_msg = self.test_port_availability(port_name)
+
+                if available:
+                    self.saved_port = port_name
+                    self.log_info(f"✅ 串口 {port_name} 测试通过")
+                    # 更新状态显示为正常
+                    self.update_status("🔌 串口连接正常", self.success_color)
+                else:
+                    self.log_error(f"❌ 串口 {port_name} 不可用: {error_msg}")
+                    # 弹出警告对话框
+                    messagebox.showwarning("串口不可用", f"所选串口 {port_name} 不可用：\n\n{error_msg}\n\n请检查串口连接或关闭占用该串口的程序。")
+                    # 重置为占位状态
+                    port_var.set("请选择串口...")
+                    self.update_status("请选择有效的串口", self.warning_color)
+
+        port_combo.bind("<<ComboboxSelected>>", on_port_select)
+
         self.current_view_widgets["port_var"] = port_var
         self.current_view_widgets["port_combo"] = port_combo
         
@@ -523,20 +714,20 @@ class SerialTransferGUI:
         config_card = tk.Frame(parent, bg=self.secondary_bg, relief="solid", bd=1)
         config_card.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
         config_card.grid_configure(padx=2, pady=2)
-        
+
         config_inner = tk.Frame(config_card, bg=self.secondary_bg)
         config_inner.pack(fill="both", expand=True, padx=15, pady=15)
         config_inner.columnconfigure(1, weight=1)
-        
+
         # 波特率
         tk.Label(
             config_inner, text="波特率:", font=("微软雅黑", 12, "bold"),
             bg=self.secondary_bg, fg=self.text_color
         ).grid(row=0, column=0, sticky=tk.W, pady=12, padx=(0, 20))
-        
+
         baud_frame = tk.Frame(config_inner, bg=self.secondary_bg)
         baud_frame.grid(row=0, column=1, sticky=tk.W, pady=12)
-        
+
         # 波特率选项
         baud_options = [
             ("1", "115200", "⭐⭐⭐⭐⭐"),
@@ -544,18 +735,23 @@ class SerialTransferGUI:
             ("3", "921600", "⭐⭐⭐"),
             ("4", "1728000", "⭐⭐")
         ]
-        
+
         # 波特率按钮字典
         baud_buttons = {}
-        
+
         def select_baud(value: str) -> None:
+            # 检查是否正在监听中
+            if self.receive_thread and self.receive_thread.is_alive():
+                messagebox.showwarning("警告", "监听过程中无法修改波特率配置")
+                return
+
             self.saved_baudrate = value
             for v, btn in baud_buttons.items():
                 if v == value:
                     btn.config(bg=self.primary_color, fg="white", bd=2)
                 else:
                     btn.config(bg="white", fg=self.text_color, bd=1)
-        
+
         for value, rate, stars in baud_options:
             btn = tk.Button(
                 baud_frame,
@@ -574,27 +770,64 @@ class SerialTransferGUI:
             )
             btn.pack(side=tk.LEFT, padx=(0, 8))
             baud_buttons[value] = btn
-        
+
         # 设置默认选中
         select_baud(self.saved_baudrate)
-        
+
         # 串口
         tk.Label(
             config_inner, text="串口:", font=("微软雅黑", 12, "bold"),
             bg=self.secondary_bg, fg=self.text_color
         ).grid(row=1, column=0, sticky=tk.W, pady=12, padx=(0, 20))
-        
+
         port_frame = tk.Frame(config_inner, bg=self.secondary_bg)
         port_frame.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=12)
         port_frame.columnconfigure(0, weight=1)
-        
-        port_var = tk.StringVar(value=self.saved_port or "")
+
+        # 使用占位提示，提示用户选择串口
+        port_var = tk.StringVar(value=self.saved_port or "请选择串口...")
         port_combo = ttk.Combobox(
             port_frame, textvariable=port_var, state="readonly",
             font=("微软雅黑", 11), width=50, height=10
         )
         port_combo.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
-        
+
+        # 绑定串口选择事件，检查监听状态和串口可用性
+        def on_port_select(event):
+            if self.receive_thread and self.receive_thread.is_alive():
+                messagebox.showwarning("警告", "监听过程中无法修改串口配置")
+                # 恢复之前的值
+                if self.saved_port:
+                    for idx, port in enumerate(port_combo["values"]):
+                        if port.startswith(self.saved_port):
+                            port_combo.current(idx)
+                            break
+                return
+
+            # 获取选择的串口
+            selected = port_var.get()
+            if selected and "未检测到串口" not in selected and selected != "请选择串口...":
+                port_name = selected.split(" - ")[0].strip()
+
+                # 测试串口可用性
+                self.log_info(f"正在测试串口 {port_name} 的可用性...")
+                available, error_msg = self.test_port_availability(port_name)
+
+                if available:
+                    self.saved_port = port_name
+                    self.log_info(f"✅ 串口 {port_name} 测试通过")
+                    # 更新状态显示为正常
+                    self.update_status("🔌 串口连接正常", self.success_color)
+                else:
+                    self.log_error(f"❌ 串口 {port_name} 不可用: {error_msg}")
+                    # 弹出警告对话框
+                    messagebox.showwarning("串口不可用", f"所选串口 {port_name} 不可用：\n\n{error_msg}\n\n请检查串口连接或关闭占用该串口的程序。")
+                    # 重置为占位状态
+                    port_var.set("请选择串口...")
+                    self.update_status("请选择有效的串口", self.warning_color)
+
+        port_combo.bind("<<ComboboxSelected>>", on_port_select)
+
         self.current_view_widgets["port_var"] = port_var
         self.current_view_widgets["port_combo"] = port_combo
         
@@ -756,9 +989,10 @@ class SerialTransferGUI:
         button_frame.columnconfigure(0, weight=1)
         
         # 开始按钮
+        start_button_text = "📤 发送文件" if mode == "send" else "🔄 开始监听"
         start_button = tk.Button(
             button_frame,
-            text="▶️  开始传输",
+            text=start_button_text,
             command=lambda: self.start_transfer(mode),
             font=("微软雅黑", 13, "bold"),
             bg=self.success_color,
@@ -772,23 +1006,6 @@ class SerialTransferGUI:
         )
         start_button.pack(side=tk.LEFT, padx=(0, 10))
         
-        # 停止按钮
-        stop_button = tk.Button(
-            button_frame,
-            text="⏹️ 停止",
-            command=self.stop_transfer,
-            font=("微软雅黑", 12),
-            bg=self.error_color,
-            fg="white",
-            activebackground="#dc2626",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
-            state="disabled",
-            padx=30,
-            pady=12
-        )
-        stop_button.pack(side=tk.LEFT, padx=(0, 10))
         
         # 清空日志按钮
         clear_button = tk.Button(
@@ -809,7 +1026,6 @@ class SerialTransferGUI:
         clear_button.pack(side=tk.LEFT)
         
         self.current_view_widgets["start_button"] = start_button
-        self.current_view_widgets["stop_button"] = stop_button
 
     # ==================== 工具方法 ====================
     
@@ -826,7 +1042,8 @@ class SerialTransferGUI:
             port_list = ["未检测到串口"]
 
         port_combo = self.current_view_widgets.get("port_combo")
-        if port_combo:
+        port_var = self.current_view_widgets.get("port_var")
+        if port_combo and port_var:
             port_combo["values"] = port_list
             if port_list and port_list[0] != "未检测到串口":
                 # 如果有保存的串口，尝试恢复
@@ -836,9 +1053,22 @@ class SerialTransferGUI:
                             port_combo.current(idx)
                             break
                 else:
-                    port_combo.current(0)
-                    # 保存第一个串口
-                    self.saved_port = port_list[0].split(" - ")[0]
+                    # 没有保存的串口，保持占位提示状态
+                    current_value = port_var.get()
+                    if current_value == "请选择串口..." or not current_value:
+                        # 保持占位状态，不自动选择
+                        pass
+                    else:
+                        # 如果当前有其他值，尝试匹配
+                        found = False
+                        for idx, port in enumerate(port_list):
+                            if port.split(" - ")[0] == current_value.split(" - ")[0]:
+                                port_combo.current(idx)
+                                found = True
+                                break
+                        if not found:
+                            # 如果找不到匹配，重置为占位状态
+                            port_var.set("请选择串口...")
 
         self.log_info(f"检测到 {len(ports)} 个串口")
 
@@ -883,6 +1113,11 @@ class SerialTransferGUI:
 
     def select_recv_dir(self) -> None:
         """选择接收目录"""
+        # 检查是否正在监听中
+        if self.receive_thread and self.receive_thread.is_alive():
+            messagebox.showwarning("警告", "监听过程中无法修改保存目录配置")
+            return
+
         folder = filedialog.askdirectory(title="选择接收文件保存目录")
         if folder:
             recv_dir_var = self.current_view_widgets.get("recv_dir_var")
@@ -906,15 +1141,54 @@ class SerialTransferGUI:
         port_var = self.current_view_widgets.get("port_var")
         if not port_var:
             return None
-        
+
         port_text = port_var.get()
-        if not port_text or "未检测到串口" in port_text:
+        if not port_text or "未检测到串口" in port_text or port_text == "请选择串口...":
             return None
-        
+
         # 提取串口号（COM3 - xxx => COM3）
         port = port_text.split(" - ")[0].strip()
         self.saved_port = port
         return port
+
+    def test_port_availability(self, port: str) -> tuple[bool, str]:
+        """测试串口是否可用
+
+        Args:
+            port: 串口号（如COM3）
+
+        Returns:
+            tuple: (是否可用, 错误信息)
+        """
+        try:
+            # 创建测试用的串口配置，使用当前波特率
+            baudrate = self.get_baudrate()
+            test_config = SerialConfig(port=port, baudrate=baudrate, timeout=1.0)
+
+            # 创建SerialManager进行测试
+            test_manager = SerialManager(test_config)
+
+            # 尝试打开串口
+            if test_manager.open():
+                # 打开成功，立即关闭
+                test_manager.close()
+                return True, ""
+            else:
+                return False, "串口打开失败"
+
+        except Exception as e:
+            error_str = str(e)
+            # 将技术错误转换为用户友好的提示
+            if "Permission denied" in error_str or "Access is denied" in error_str:
+                return False, "串口权限不足，可能被其他程序占用"
+            elif "Device or resource busy" in error_str or "busy" in error_str:
+                return False, "串口被其他程序占用"
+            elif "No such file or directory" in error_str:
+                return False, "串口设备不存在，请检查设备连接"
+            elif "timeout" in error_str.lower():
+                return False, "串口连接超时"
+            else:
+                return False, f"串口不可用: {error_str}"
 
     # ==================== 传输控制 ====================
     
@@ -935,6 +1209,15 @@ class SerialTransferGUI:
             return
 
         if mode == "send":
+            # 在发送前再次验证串口可用性
+            self.log_info(f"正在验证串口 {port} 的可用性...")
+            available, error_msg = self.test_port_availability(port)
+            if not available:
+                self.log_error(f"❌ 串口 {port} 验证失败: {error_msg}")
+                messagebox.showerror("串口不可用",
+                    f"无法开始发送，串口 {port} 不可用：\n\n{error_msg}\n\n请检查串口连接或关闭占用该串口的程序。")
+                return
+
             file_path_var = self.current_view_widgets.get("file_path_var")
             if not file_path_var:
                 return
@@ -945,27 +1228,20 @@ class SerialTransferGUI:
             if not Path(file_path).exists():
                 messagebox.showerror("错误", f"文件或文件夹不存在: {file_path}")
                 return
-        else:
-            recv_dir_var = self.current_view_widgets.get("recv_dir_var")
-            if not recv_dir_var:
-                return
-            recv_dir = recv_dir_var.get()
-            if not recv_dir:
-                messagebox.showerror("错误", "请选择接收文件保存目录")
-                return
+        elif mode == "receive":
+            # 接收端：启动监听模式
+            self._start_receive_monitoring()
+            return
 
         # 更新UI状态
         self.is_transferring = True
         start_button = self.current_view_widgets.get("start_button")
-        stop_button = self.current_view_widgets.get("stop_button")
         progress_var = self.current_view_widgets.get("progress_var")
         progress_percent_label = self.current_view_widgets.get("progress_percent_label")
         speed_label = self.current_view_widgets.get("speed_label")
-        
+
         if start_button:
             start_button.config(state="disabled")
-        if stop_button:
-            stop_button.config(state="normal")
         if progress_var:
             progress_var.set(0)
         if progress_percent_label:
@@ -1029,10 +1305,10 @@ class SerialTransferGUI:
                     
                     # 创建FileSender时传入文件路径和进度回调
                     sender = FileSender(
-                        serial_manager, 
-                        file_path, 
+                        serial_manager,
+                        file_path,
                         transfer_config,
-                        progress_callback=self.update_progress
+                        progress_callback=self._get_progress_callback("send")
                     )
                     
                     # 等待接收端请求文件名
@@ -1060,7 +1336,7 @@ class SerialTransferGUI:
                         folder_path=file_path,
                         serial_manager=serial_manager,
                         config=transfer_config,
-                        progress_callback=self.update_progress
+                        progress_callback=self._get_progress_callback("send")
                     )
                     
                     # 批量发送会自动处理文件遍历、发送、进度等
@@ -1106,7 +1382,7 @@ class SerialTransferGUI:
                     folder_path=recv_dir,
                     serial_manager=serial_manager,
                     config=transfer_config,
-                    progress_callback=self.update_progress
+                    progress_callback=self._get_progress_callback("receive")
                 )
                 
                 self.log_info("📡 启动统一批量接收模式（自动适配单文件/文件夹）")
@@ -1147,23 +1423,14 @@ class SerialTransferGUI:
             self.is_transferring = False
             self.root.after(0, self.reset_ui)
 
-    def stop_transfer(self) -> None:
-        """停止传输"""
-        if self.is_transferring:
-            self.log_warning("用户请求停止传输...")
-            self.is_transferring = False
-            # TODO: 添加中断传输的逻辑
 
     def reset_ui(self) -> None:
         """重置UI状态"""
         start_button = self.current_view_widgets.get("start_button")
-        stop_button = self.current_view_widgets.get("stop_button")
-        
+
         if start_button:
             start_button.config(state="normal")
-        if stop_button:
-            stop_button.config(state="disabled")
-        
+
         if not self.is_transferring:
             self.update_status("就绪", self.text_secondary)
 
@@ -1173,13 +1440,14 @@ class SerialTransferGUI:
         if status_label:
             self.root.after(0, lambda: status_label.config(text=text, fg=color))
     
-    def update_progress(self, current: int, total: int, status_text: str = "") -> None:
+    def update_progress(self, current: int, total: int, status_text: str = "", mode: str = "send") -> None:
         """更新进度条（现代化UI版本）
-        
+
         Args:
             current: 当前进度值（字节数）
             total: 总进度值（字节数）
             status_text: 状态文本（可选）
+            mode: 模式（send/receive）
         """
         if total <= 0:
             return
@@ -1245,6 +1513,11 @@ class SerialTransferGUI:
                 else:
                     display_text = f"{current_mb:.2f} / {total_mb:.2f} MB"
             self.root.after(0, lambda dt=display_text: status_label.config(text=dt))
+
+        # 接收模式：更新接收状态
+        if mode == "receive" and self.receive_state == ReceiveUIState.WAITING:
+            self.receive_state = ReceiveUIState.RECEIVING
+            self.root.after(0, lambda: self.update_status("📥 正在接收文件...", self.primary_color))
 
     # ==================== 日志系统 ====================
     
