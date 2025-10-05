@@ -79,6 +79,8 @@ class SerialTransferGUI:
         self.current_progress = 0.0
         self.total_bytes = 0
         self.transferred_bytes = 0
+        self.last_update_time = 0.0
+        self.last_transferred_bytes = 0
         
         # 日志系统（全局共享，但每个视图有独立的显示组件）
         self.log_queue: queue.Queue = queue.Queue()
@@ -688,29 +690,64 @@ class SerialTransferGUI:
         control_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
         control_frame.columnconfigure(0, weight=1)
         
-        # 进度条和状态
-        progress_frame = tk.Frame(control_frame, bg=self.bg_color)
-        progress_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 12))
-        progress_frame.columnconfigure(0, weight=1)
+        # 进度条和状态（现代化设计）
+        progress_container = tk.Frame(control_frame, bg=self.bg_color)
+        progress_container.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 15))
+        progress_container.columnconfigure(0, weight=1)
         
+        # 进度信息行（百分比 + 速度）
+        info_frame = tk.Frame(progress_container, bg=self.bg_color)
+        info_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        info_frame.columnconfigure(1, weight=1)
+        
+        # 百分比标签（左侧）
+        progress_percent_label = tk.Label(
+            info_frame, text="0%", font=("微软雅黑", 11, "bold"),
+            fg=self.text_color, bg=self.bg_color
+        )
+        progress_percent_label.grid(row=0, column=0, sticky=tk.W)
+        
+        # 速度标签（右侧）
+        speed_label = tk.Label(
+            info_frame, text="", font=("微软雅黑", 10),
+            fg=self.text_secondary, bg=self.bg_color
+        )
+        speed_label.grid(row=0, column=2, sticky=tk.E)
+        
+        # 进度条（使用自定义样式）
         progress_var = tk.DoubleVar()
+        
+        # 配置绿色进度条样式
+        style = ttk.Style()
+        style.configure(
+            "Green.Horizontal.TProgressbar",
+            troughcolor=self.secondary_bg,
+            background=self.success_color,
+            borderwidth=0,
+            thickness=20
+        )
+        
         progress_bar = ttk.Progressbar(
-            progress_frame,
+            progress_container,
             variable=progress_var,
             maximum=100,
             mode="determinate",
-            length=400,
+            style="Green.Horizontal.TProgressbar",
+            length=400
         )
-        progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 15))
+        progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
         
+        # 状态文本（传输量信息）
         status_label = tk.Label(
-            progress_frame, text="就绪", font=("微软雅黑", 12),
+            progress_container, text="就绪", font=("微软雅黑", 10),
             fg=self.text_secondary, bg=self.bg_color
         )
-        status_label.grid(row=0, column=1)
+        status_label.grid(row=2, column=0, sticky=tk.W)
         
         self.current_view_widgets["progress_var"] = progress_var
         self.current_view_widgets["progress_bar"] = progress_bar
+        self.current_view_widgets["progress_percent_label"] = progress_percent_label
+        self.current_view_widgets["speed_label"] = speed_label
         self.current_view_widgets["status_label"] = status_label
         
         # 按钮区域
@@ -922,6 +959,8 @@ class SerialTransferGUI:
         start_button = self.current_view_widgets.get("start_button")
         stop_button = self.current_view_widgets.get("stop_button")
         progress_var = self.current_view_widgets.get("progress_var")
+        progress_percent_label = self.current_view_widgets.get("progress_percent_label")
+        speed_label = self.current_view_widgets.get("speed_label")
         
         if start_button:
             start_button.config(state="disabled")
@@ -929,6 +968,14 @@ class SerialTransferGUI:
             stop_button.config(state="normal")
         if progress_var:
             progress_var.set(0)
+        if progress_percent_label:
+            progress_percent_label.config(text="0%")
+        if speed_label:
+            speed_label.config(text="")
+        
+        # 重置速度计算变量
+        self.last_update_time = 0.0
+        self.last_transferred_bytes = 0
         
         self.update_status("传输中...", self.primary_color)
 
@@ -1127,7 +1174,7 @@ class SerialTransferGUI:
             self.root.after(0, lambda: status_label.config(text=text, fg=color))
     
     def update_progress(self, current: int, total: int, status_text: str = "") -> None:
-        """更新进度条
+        """更新进度条（现代化UI版本）
         
         Args:
             current: 当前进度值（字节数）
@@ -1137,31 +1184,67 @@ class SerialTransferGUI:
         if total <= 0:
             return
         
+        import time
+        
         progress_percent = min(100.0, (current / total) * 100)
         self.current_progress = progress_percent
         self.transferred_bytes = current
         self.total_bytes = total
+        
+        # 计算传输速度
+        current_time = time.time()
+        speed_text = ""
+        if self.last_update_time > 0:
+            time_diff = current_time - self.last_update_time
+            if time_diff >= 0.5:  # 至少0.5秒更新一次速度
+                bytes_diff = current - self.last_transferred_bytes
+                if bytes_diff > 0:
+                    speed_bytes_per_sec = bytes_diff / time_diff
+                    speed_kb = speed_bytes_per_sec / 1024
+                    if speed_kb >= 1024:
+                        speed_mb = speed_kb / 1024
+                        speed_text = f"{speed_mb:.2f} MB/s"
+                    else:
+                        speed_text = f"{speed_kb:.2f} KB/s"
+                    self.last_update_time = current_time
+                    self.last_transferred_bytes = current
+        else:
+            self.last_update_time = current_time
+            self.last_transferred_bytes = current
         
         # 更新进度条
         progress_var = self.current_view_widgets.get("progress_var")
         if progress_var:
             self.root.after(0, lambda: progress_var.set(progress_percent))
         
-        # 更新状态文本
-        if status_text:
-            self.update_status(status_text, self.primary_color)
-        else:
-            # 默认显示百分比和传输量
-            current_mb = current / (1024 * 1024)
-            total_mb = total / (1024 * 1024)
-            if total_mb < 1:
-                # 小于1MB时显示KB
-                current_kb = current / 1024
-                total_kb = total / 1024
-                status_msg = f"{progress_percent:.1f}% ({current_kb:.1f}/{total_kb:.1f} KB)"
+        # 更新百分比标签
+        progress_percent_label = self.current_view_widgets.get("progress_percent_label")
+        if progress_percent_label:
+            percent_text = f"{progress_percent:.1f}%"
+            self.root.after(0, lambda: progress_percent_label.config(text=percent_text))
+        
+        # 更新速度标签
+        speed_label = self.current_view_widgets.get("speed_label")
+        if speed_label and speed_text:
+            self.root.after(0, lambda st=speed_text: speed_label.config(text=st))
+        
+        # 更新状态文本（传输量信息）
+        status_label = self.current_view_widgets.get("status_label")
+        if status_label:
+            if status_text:
+                display_text = status_text
             else:
-                status_msg = f"{progress_percent:.1f}% ({current_mb:.2f}/{total_mb:.2f} MB)"
-            self.update_status(status_msg, self.primary_color)
+                # 计算并显示传输量
+                current_mb = current / (1024 * 1024)
+                total_mb = total / (1024 * 1024)
+                if total_mb < 1:
+                    # 小于1MB时显示KB
+                    current_kb = current / 1024
+                    total_kb = total / 1024
+                    display_text = f"{current_kb:.1f} / {total_kb:.1f} KB"
+                else:
+                    display_text = f"{current_mb:.2f} / {total_mb:.2f} MB"
+            self.root.after(0, lambda dt=display_text: status_label.config(text=dt))
 
     # ==================== 日志系统 ====================
     
