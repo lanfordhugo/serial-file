@@ -6,28 +6,56 @@
 
 **🚀 核心特性**：
 
-- **智能路径检测**: 自动识别文件/文件夹，选择相应传输方式
-- **可靠传输协议**: 校验和验证和错误重传机制  
-- **全面测试覆盖**: 186个测试用例保障代码质量
-- **统一CLI接口**: 简单易用的命令行界面
-- **智能探测模式**: 自动设备发现和参数协商，一键传输
+- **双模式界面**: GUI 图形界面 + CLI 命令行接口
+- **可靠传输协议**: CRC16 校验、offset 字段、重复帧幂等处理  
+- **模块化架构**: 高内聚低耦合的分层设计
+- **全面测试覆盖**: 完善的测试体系保障代码质量
+- **代码复用**: 统一的工具函数层和错误处理机制
 
 ---
 
 ## 快速开始
 
-详细安装与使用说明，请参考：[用户操作指南](docs/USER_GUIDE.md)
+### 环境安装
+
+```bash
+# 克隆项目
+git clone <repository-url>
+cd serial-file-transfer
+
+# 安装依赖
+pip install -r requirements.txt
+```
+
+### 使用方式
+
+**GUI 模式**:
+
+```bash
+python gui_main.py
+```
+
+**CLI 模式**:
+
+```bash
+python main.py
+```
 
 ### 代码集成
 
 ```python
-from serial_file_transfer.cli.file_transfer import FileTransferCLI
+from serial_file_transfer.transfer.sender import Sender
+from serial_file_transfer.core.serial_manager import SerialManager
 
-# 智能发送（自动探测和协商）
-success = FileTransferCLI.smart_send()
+# 创建串口管理器
+serial_mgr = SerialManager(port="COM3", baudrate=115200)
+serial_mgr.open()
 
-# 智能接收（自动响应和配置）
-success = FileTransferCLI.smart_receive()
+# 发送文件
+sender = Sender(serial_mgr)
+success = sender.send_file("test.txt")
+
+serial_mgr.close()
 ```
 
 ---
@@ -40,19 +68,13 @@ success = FileTransferCLI.smart_receive()
 src/serial_file_transfer/
 ├── config/          # 配置管理（常量、设置）
 ├── core/            # 核心功能（串口、数据帧、校验）
-├── transfer/        # 传输逻辑（发送、接收、批量）
-├── utils/           # 工具函数（日志、进度）
+├── transfer/        # 传输逻辑（发送、接收）
+├── utils/           # 工具函数（日志、进度、格式化）
+├── gui/             # 图形界面（模块化设计）
 └── cli/             # 命令行接口
 ```
 
 详细技术架构，请参考：[技术架构文档](docs/ARCHITECTURE.md)
-
-### 技术栈
-
-- **语言**: Python 3.7+
-- **核心依赖**: pyserial
-- **测试框架**: pytest
-- **代码规范**: PEP 8 + 类型提示
 
 ---
 
@@ -60,48 +82,44 @@ src/serial_file_transfer/
 
 | 文档 | 内容 | 适合读者 |
 |------|------|----------|
-| 📋 **[用户指南](docs/USER_GUIDE.md)** | 详细使用说明、智能模式、故障排除 | 终端用户 |
-| 🏗️ **[技术架构](docs/ARCHITECTURE.md)** | 项目结构、核心模块、类设计 | 开发者 |
-| 📡 **[协议规范](docs/PROTOCOL.md)** | 传输协议、智能探测、数据格式 | 技术人员 |
-| 🧪 **[测试框架](docs/TESTING.md)** | 测试体系、pytest使用、Mock技术 | 测试工程师 |
+| 🏗️ **[技术架构](docs/ARCHITECTURE.md)** | 项目结构、核心模块、设计原则 | 开发者 |
+| 📡 **[协议规范](docs/PROTOCOL.md)** | 传输协议、帧格式、核心机制 | 技术人员 |
+| 🎨 **[GUI 架构](docs/GUI.md)** | 图形界面设计、模块化架构 | 前端开发者 |
 | 🔧 **[开发指南](docs/DEVELOPMENT.md)** | 环境配置、代码规范、贡献流程 | 贡献者 |
-| 📚 **[文档中心](docs/README.md)** | 文档索引、快速查找 | 所有用户 |
+| 📚 **[文档中心](docs/README.md)** | 完整文档索引、快速导航 | 所有用户 |
 
 ---
 
 ## 主要功能
 
-本工具提供以下核心功能：
+### ✅ 双模式界面
 
-### ✅ 智能传输
+- **GUI 模式**: 友好的图形界面（模块化设计，7个独立模块）
+- **CLI 模式**: 灵活的命令行接口
 
-- 自动路径检测（文件/文件夹）
-- 统一CLI接口
-- 智能探测协商协议
+### ✅ 可靠传输
 
-### ✅ 可靠通信  
+- **自定义协议**: CRC16 校验、offset 字段、序号同步
+- **错误恢复**: 重复帧幂等处理、统一重试流程
+- **传输保障**: ACK确认机制、硬件恢复策略
 
-- 自定义数据帧格式
-- 校验和验证机制
-- 错误重传和断点续传
+### ✅ 文件管理
 
-### ✅ 性能优化
-
+- 单文件传输
+- 文件夹批量传输
 - 大文件分块传输
-- 可配置传输参数
-- 多波特率支持
 
 ### ✅ 质量保障
 
-- 186个测试用例
-- 90%+ 测试覆盖率
-- 完整的Mock测试
+- 全面的测试覆盖
+- Mock 测试技术
+- 持续集成验证
 
 ---
 
 ## 测试与质量
 
-项目采用TDD（测试驱动开发）模式，具备全面的测试覆盖。
+项目采用全面的测试体系，确保代码质量。
 
 ### 运行测试
 
@@ -111,9 +129,12 @@ pytest tests/ -v
 
 # 查看测试覆盖率
 pytest tests/ --cov=src/serial_file_transfer --cov-report=html
+
+# 运行特定测试
+pytest tests/unit/test_sender.py -v
 ```
 
-详细测试指南和统计，请参考：[测试框架文档](docs/TESTING.md)
+详细测试规范，请参考：[开发指南 - 测试规范](docs/DEVELOPMENT.md#测试规范)
 
 ---
 
@@ -154,6 +175,7 @@ python build.py --test
 ### 构建输出
 
 构建完成后，可执行文件将位于：
+
 - 单文件模式：`dist/SerialFileTransfer.exe`
 - 目录模式：`dist/SerialFileTransfer/SerialFileTransfer.exe`
 
@@ -161,19 +183,21 @@ python build.py --test
 
 ## 版本信息
 
-### 当前版本：v1.3.0 ✨
+### 当前版本：v1.4.1
 
-- 🚀 **智能探测协商协议**: 7步自动协商流程，一键传输
-- 📡 **自动设备发现**: 115200波特率探测，自动参数协商
-- ⚡ **动态波特率切换**: 支持高达1728000波特率的智能切换
-- 🧪 **全面测试覆盖**: 186个测试用例，48个新增探测协议测试
-- 🔧 **完全向后兼容**: 智能模式与手动模式并存
+**核心特性**:
 
-### 稳定版本：v1.2.0
+- ✅ **GUI 模块化架构**: 从单文件重构为 7 个独立模块
+- ✅ **协议增强**: offset 字段支持、重复帧幂等处理
+- ✅ **代码复用**: 工具函数层完善（error_handler、format_utils）
+- ✅ **质量保障**: 完整的测试覆盖和代码规范
 
-- 🧪 138个测试用例的完整测试体系
-- 🎯 测试驱动开发和高质量保障
-- 🔍 先进的Mock测试技术
+**技术栈**:
+
+- Python 3.7+
+- tkinter (GUI)
+- pyserial (串口通信)
+- pytest (测试框架)
 
 ---
 
@@ -190,9 +214,12 @@ python build.py --test
 
 ### 📞 获取帮助
 
-- 📖 **使用问题**: 查看 [用户指南](docs/USER_GUIDE.md)
-- 🔧 **技术问题**: 查看 [技术架构](docs/ARCHITECTURE.md)
-- 🐛 **Bug报告**: 提交 GitHub Issues
+- 📖 **快速上手**: 查看本 README 的"快速开始"部分
+- 🏗️ **技术架构**: 查看 [技术架构文档](docs/ARCHITECTURE.md)
+- 📡 **协议细节**: 查看 [协议规范文档](docs/PROTOCOL.md)
+- 🎨 **GUI 开发**: 查看 [GUI 架构文档](docs/GUI.md)
+- 🔧 **开发贡献**: 查看 [开发指南](docs/DEVELOPMENT.md)
+- 🐛 **Bug 报告**: 提交 GitHub Issues
 - 💬 **功能建议**: 参与 GitHub Discussions
 
 ### 📄 许可证

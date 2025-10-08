@@ -38,6 +38,7 @@ gui_main.py                   # 纯入口文件 (29行)
 **职责**: 应用生命周期管理、视图切换、状态管理
 
 **核心功能**:
+
 ```python
 class SerialTransferApp:
     def __init__(self, root: tk.Tk):
@@ -62,6 +63,7 @@ class SerialTransferApp:
 ```
 
 **关键特性**:
+
 - ✅ 集中管理视图切换
 - ✅ 维护全局配置状态
 - ✅ 日志队列管理
@@ -73,6 +75,7 @@ class SerialTransferApp:
 **职责**: 统一管理 UI 主题、颜色、样式
 
 **核心设计**:
+
 ```python
 @dataclass
 class ThemeColors:
@@ -95,6 +98,7 @@ class ThemeManager:
 ```
 
 **优势**:
+
 - ✅ 主题配置集中
 - ✅ 易于更换主题
 - ✅ 样式统一管理
@@ -106,6 +110,7 @@ class ThemeManager:
 **职责**: 创建和管理模式选择界面
 
 **核心设计**:
+
 ```python
 class ModeSelectionView:
     def __init__(
@@ -128,6 +133,7 @@ class ModeSelectionView:
 ```
 
 **界面特点**:
+
 - 两个大按钮（发送/接收）
 - 悬停效果
 - 版本信息显示
@@ -139,6 +145,7 @@ class ModeSelectionView:
 **职责**: 提供可复用的日志显示和控制组件
 
 **核心设计**:
+
 ```python
 class LogPanel:
     """日志面板组件（可复用）"""
@@ -164,12 +171,14 @@ class LogPanel:
 ```
 
 **组件包含**:
+
 - 日志文本框（滚动显示）
 - 进度条（百分比、速度、状态）
 - 开始按钮
 - 清空日志按钮
 
 **复用优势**:
+
 - ✅ 发送和接收面板共享
 - ✅ 统一的进度显示
 - ✅ 统一的日志格式
@@ -181,6 +190,7 @@ class LogPanel:
 **职责**: 发送界面 UI + 发送逻辑
 
 **核心设计**:
+
 ```python
 class SendPanel:
     def __init__(
@@ -212,6 +222,7 @@ class SendPanel:
 ```
 
 **界面包含**:
+
 - 返回按钮 + 标题
 - 串口配置（波特率、串口号、测试）
 - 文件选择（文件/文件夹）
@@ -224,6 +235,7 @@ class SendPanel:
 **职责**: 接收界面 UI + 接收逻辑
 
 **核心设计**:
+
 ```python
 class ReceivePanel:
     def __init__(
@@ -255,6 +267,7 @@ class ReceivePanel:
 ```
 
 **界面包含**:
+
 - 返回按钮 + 标题
 - 串口配置（波特率、串口号、测试）
 - 保存目录选择
@@ -291,6 +304,7 @@ class ReceivePanel:
 ```
 
 **切换逻辑**:
+
 1. 清空当前视图（`clear_current_view()`）
 2. 创建新视图并传递回调函数
 3. 新视图显示
@@ -300,6 +314,7 @@ class ReceivePanel:
 ## 线程管理
 
 ### 发送线程
+
 ```python
 # SendPanel 中
 def _start_transfer(self):
@@ -316,6 +331,7 @@ def _transfer_worker(self):
 ```
 
 ### 接收线程
+
 ```python
 # ReceivePanel 中
 def _start_monitoring(self):
@@ -336,6 +352,7 @@ def _receive_monitor_worker(self):
 ## 日志系统
 
 ### 日志队列
+
 ```python
 # app.py 中
 self.log_queue = queue.Queue()
@@ -351,6 +368,7 @@ def _process_log_queue(self):
 ```
 
 ### 日志更新
+
 ```python
 # LogPanel 中
 def _update_log_text(self):
@@ -371,6 +389,7 @@ def _update_log_text(self):
 ## 进度回调
 
 ### 发送端进度
+
 ```python
 def progress_callback(current: int, total: int):
     """进度回调函数"""
@@ -378,6 +397,7 @@ def progress_callback(current: int, total: int):
 ```
 
 ### 接收端进度
+
 ```python
 def progress_callback(current: int, total: int):
     """进度回调函数"""
@@ -389,6 +409,7 @@ def progress_callback(current: int, total: int):
 ## 错误处理
 
 ### 串口错误
+
 ```python
 from serial_file_transfer.utils.error_handler import format_serial_error
 
@@ -401,6 +422,7 @@ except Exception as e:
 ```
 
 ### 传输错误
+
 ```python
 try:
     # 传输操作
@@ -418,6 +440,7 @@ finally:
 ## 工具函数复用
 
 ### 格式化工具
+
 ```python
 from serial_file_transfer.utils.format_utils import (
     format_transfer_speed,
@@ -431,6 +454,7 @@ display_text = format_progress_text(current, total)
 ```
 
 ### 串口测试
+
 ```python
 from serial_file_transfer.core.serial_manager import SerialManager
 
@@ -445,6 +469,7 @@ available, error_msg = SerialManager.test_port_availability(
 ## 优化与改进
 
 ### 已实现优化
+
 - ✅ 模块化架构（7个文件）
 - ✅ 组件复用（LogPanel）
 - ✅ 工具函数复用（error_handler、format_utils）
@@ -452,12 +477,14 @@ available, error_msg = SerialManager.test_port_availability(
 - ✅ 线程安全的日志系统
 
 ### 代码质量
+
 - ✅ PEP 8 合规
 - ✅ 完整类型提示
 - ✅ 完整文档字符串
 - ✅ 中文注释
 
 ### 性能优化
+
 - ✅ 异步日志更新（100ms间隔）
 - ✅ 守护线程避免阻塞
 - ✅ 队列通信避免竞态
@@ -467,11 +494,13 @@ available, error_msg = SerialManager.test_port_availability(
 ## 使用指南
 
 ### 启动应用
+
 ```bash
 python gui_main.py
 ```
 
 ### 修改主题
+
 ```python
 # 在 theme.py 中修改
 colors = ThemeColors(
@@ -481,6 +510,7 @@ colors = ThemeColors(
 ```
 
 ### 添加新视图
+
 ```python
 # 1. 创建视图类
 class NewView:
@@ -501,17 +531,20 @@ def show_new_view(self):
 ## 架构优势
 
 ### 可维护性
+
 - 修改发送逻辑：只需编辑 `send_panel.py`
 - 修改接收逻辑：只需编辑 `receive_panel.py`
 - 更换主题：只需修改 `theme.py`
 - 调整日志显示：修改 `log_panel.py`，所有面板自动更新
 
 ### 可测试性
+
 - 每个模块可独立单元测试
 - UI 组件和业务逻辑分离
 - 依赖注入（通过构造函数）
 
 ### 可扩展性
+
 - 易于添加新视图
 - 易于添加新主题
 - 易于添加新功能
@@ -519,4 +552,3 @@ def show_new_view(self):
 ---
 
 **最后更新**: 2025-10-08
-

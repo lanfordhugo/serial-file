@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 """
-串口文件传输工具 - Python构建脚本
-================================
+串口文件传输工具 - Python构建脚本（GUI版本）
+==========================================
 
-这是一个用于构建串口文件传输工具可执行文件的Python脚本。
+这是一个用于构建串口文件传输工具 GUI 版本可执行文件的Python脚本。
 替代原有的build.bat脚本，提供更好的中文字符支持和跨平台兼容性。
 
 主要功能：
 - 环境检查（Python版本、依赖文件）
-- 自动安装构建依赖（PyInstaller等）
+- 自动安装构建依赖（PyInstaller、tkinter等）
 - 清理之前的构建文件
 - 交互式构建选项（单文件/目录模式）
-- 执行PyInstaller构建
+- 执行PyInstaller构建（GUI模式，无控制台窗口）
 - 构建结果验证和测试
 - 详细的中文状态反馈
 
 使用方法：
     python build.py
 
+构建特性：
+    - 入口文件：gui_main.py（图形界面）
+    - 窗口模式：--noconsole（无控制台窗口）
+    - GUI框架：tkinter
+    - 输出文件：SerialFileTransfer_GUI.exe
+
 作者：lanford
 版本：1.0.0
 创建时间：2025-01-18
+更新时间：2025-10-08
 """
 
 import sys
@@ -41,11 +48,11 @@ from datetime import datetime
 
 # 版本信息
 SCRIPT_VERSION = "1.0.0"
-SCRIPT_NAME = "串口文件传输工具构建脚本"
+SCRIPT_NAME = "串口文件传输工具构建脚本（GUI版本）"
 
 # 构建配置
-MAIN_FILE = "main.py"
-APP_NAME = "SerialFileTransfer"
+MAIN_FILE = "gui_main.py"
+APP_NAME = "SerialFileTransfer_GUI"
 REQUIREMENTS_FILE = "requirements.txt"
 
 # 目录配置
@@ -56,11 +63,16 @@ SRC_DIR = "src"
 # PyInstaller隐藏导入模块（仅包含实际使用的）
 HIDDEN_IMPORTS = [
     "serial_file_transfer",  # 项目主模块
+    "serial_file_transfer.gui",  # GUI 模块
+    "serial_file_transfer.gui.app",  # GUI 应用主类
     "serial",               # 串口通信核心
     "serial.tools",         # 串口工具
     "serial.tools.list_ports",  # 串口列表
     "yaml",                 # PyYAML配置解析
-    "colorama",            # 控制台颜色（构建工具使用）
+    "tkinter",             # GUI框架核心
+    "tkinter.ttk",         # GUI主题组件
+    "tkinter.filedialog",  # 文件对话框
+    "tkinter.messagebox",  # 消息框
 ]
 
 # PyInstaller收集模块（仅包含实际使用的）
@@ -107,7 +119,8 @@ def print_banner():
     print("=" * 80)
     print(f"{Colors.CYAN}{Colors.BOLD}{SCRIPT_NAME} v{SCRIPT_VERSION}{Colors.END}")
     print("=" * 80)
-    print(f"{Colors.YELLOW}🚀 开始构建串口文件传输工具可执行文件{Colors.END}")
+    print(f"{Colors.YELLOW}🚀 开始构建串口文件传输工具 GUI 版本可执行文件{Colors.END}")
+    print(f"{Colors.YELLOW}📱 使用 GUI 界面，无控制台窗口{Colors.END}")
     print()
 
 def print_step(step_name: str, description: str = ""):
@@ -829,7 +842,7 @@ class BuildManager:
         command = [
             sys.executable, "-m", "PyInstaller",
             f"--{self.build_type}",
-            "--console",
+            "--noconsole",  # GUI模式，不显示控制台窗口
             "--name", APP_NAME,
             "--add-data", f"{SRC_DIR}{os.pathsep}{SRC_DIR}",
             "--add-data", f"config{os.pathsep}config",  # 包含配置文件目录
@@ -1044,34 +1057,20 @@ class BuildManager:
         except Exception as e:
             print_warning(f"无法获取文件大小: {e}")
 
-        # 测试可执行文件
-        print_info("测试可执行文件...")
-        success, output = run_command(
-            [str(exe_path), "--version"],
-            "测试可执行文件版本信息",
-            check=False
-        )
-
-        if success:
-            print_success("可执行文件测试通过")
-            if output.strip():
-                print_info(f"版本信息: {output.strip()}")
-        else:
-            print_warning("可执行文件测试失败，但文件已生成")
-            print_warning("这可能是正常的，取决于程序的命令行参数处理")
-
-        # 测试配置文件加载
-        print_info("测试配置文件加载...")
-        success, output = run_command(
-            [str(exe_path), "--help"],
-            "测试配置文件和帮助信息",
-            check=False
-        )
-
-        if success and ("文件传输模式" in output or "help" in output.lower()):
-            print_success("配置文件加载测试通过")
-        else:
-            print_warning("配置文件加载测试未能确认，但可执行文件已生成")
+        # GUI 应用验证说明
+        print_info("GUI 应用验证...")
+        print_info("注意: GUI 应用需要手动运行测试，无法通过命令行参数自动测试")
+        print_success("可执行文件已成功生成，建议手动运行以验证功能")
+        
+        # 可选：显示一些基本的文件属性验证
+        try:
+            file_stat = exe_path.stat()
+            if file_stat.st_size > 1024 * 1024:  # 至少 1MB
+                print_success("文件大小正常，构建完整")
+            else:
+                print_warning("文件大小较小，可能构建不完整")
+        except Exception as e:
+            print_warning(f"无法验证文件属性: {e}")
 
         print_success("构建验证完成")
         return True
@@ -1108,8 +1107,9 @@ class BuildManager:
         # 使用建议
         print()
         print(f"{Colors.YELLOW}💡 使用建议:{Colors.END}")
-        print(f"   • 可以直接运行生成的可执行文件")
-        print(f"   • 建议在目标机器上测试程序功能")
+        print(f"   • 双击运行生成的 GUI 可执行文件")
+        print(f"   • GUI 版本无需命令行，直接图形界面操作")
+        print(f"   • 建议在目标机器上测试程序功能和界面显示")
         print(f"   • 如需分发，请包含整个输出目录（目录模式）")
         print()
 
