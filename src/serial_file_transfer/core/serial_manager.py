@@ -215,6 +215,52 @@ class SerialManager:
         for port in ports:
             print(f"  {port['device']} - {port['description']}")
 
+    @staticmethod
+    def test_port_availability(
+        port: str, baudrate: int = 115200, timeout: float = 1.0
+    ) -> tuple[bool, str]:
+        """
+        测试串口是否可用
+        
+        Args:
+            port: 串口号（如COM3或/dev/ttyUSB0）
+            baudrate: 波特率（默认115200）
+            timeout: 超时时间（默认1秒）
+            
+        Returns:
+            元组 (是否可用, 错误信息)
+            
+        Examples:
+            >>> available, error_msg = SerialManager.test_port_availability("COM3")
+            >>> if available:
+            ...     print("串口可用")
+            ... else:
+            ...     print(f"串口不可用: {error_msg}")
+        """
+        try:
+            from ..config.settings import SerialConfig
+            from ..utils.error_handler import format_serial_error
+
+            # 创建测试配置
+            test_config = SerialConfig(port=port, baudrate=baudrate, timeout=timeout)
+
+            # 创建临时SerialManager进行测试
+            test_manager = SerialManager(test_config)
+
+            # 尝试打开串口
+            if test_manager.open():
+                # 打开成功，立即关闭
+                test_manager.close()
+                return True, ""
+            else:
+                return False, "串口打开失败"
+
+        except Exception as e:
+            from ..utils.error_handler import format_serial_error
+
+            error_msg = format_serial_error(e)
+            return False, error_msg
+
     def __enter__(self):
         """支持with语句"""
         if not self.open():
