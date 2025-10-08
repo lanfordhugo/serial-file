@@ -14,9 +14,8 @@ import logging
 
 from .theme import ThemeManager
 from .mode_selection_view import ModeSelectionView
-# send_panel 和 receive_panel 将在后续导入
-# from .send_panel import SendPanel
-# from .receive_panel import ReceivePanel
+from .send_panel import SendPanel
+from .receive_panel import ReceivePanel
 
 from ..utils.logger import register_extra_handler, unregister_extra_handler
 
@@ -114,8 +113,6 @@ class SerialTransferApp:
     def show_send_panel(self) -> None:
         """显示发送面板"""
         self.clear_current_view()
-        # 导入延迟到使用时，避免循环依赖
-        from .send_panel import SendPanel
         self.current_view = SendPanel(
             self.root,
             self.theme,
@@ -127,8 +124,6 @@ class SerialTransferApp:
     def show_receive_panel(self) -> None:
         """显示接收面板"""
         self.clear_current_view()
-        # 导入延迟到使用时，避免循环依赖
-        from .receive_panel import ReceivePanel
         self.current_view = ReceivePanel(
             self.root,
             self.theme,

@@ -62,17 +62,58 @@ SRC_DIR = "src"
 
 # PyInstaller隐藏导入模块（仅包含实际使用的）
 HIDDEN_IMPORTS = [
-    "serial_file_transfer",  # 项目主模块
-    "serial_file_transfer.gui",  # GUI 模块
-    "serial_file_transfer.gui.app",  # GUI 应用主类
+    # 项目主模块
+    "serial_file_transfer",
+    
+    # GUI 核心模块
+    "serial_file_transfer.gui",
+    "serial_file_transfer.gui.app",
+    "serial_file_transfer.gui.theme",
+    "serial_file_transfer.gui.mode_selection_view",
+    "serial_file_transfer.gui.send_panel",      # 发送面板（延迟导入）
+    "serial_file_transfer.gui.receive_panel",   # 接收面板（延迟导入）
+    "serial_file_transfer.gui.log_panel",       # 日志面板
+    
+    # 传输层模块
+    "serial_file_transfer.transfer",
+    "serial_file_transfer.transfer.sender",
+    "serial_file_transfer.transfer.receiver",
+    "serial_file_transfer.transfer.file_manager",
+    
+    # 核心模块
+    "serial_file_transfer.core",
+    "serial_file_transfer.core.serial_manager",
+    "serial_file_transfer.core.frame_handler",
+    "serial_file_transfer.core.checksum",
+    
+    # 配置模块
+    "serial_file_transfer.config",
+    "serial_file_transfer.config.settings",
+    "serial_file_transfer.config.config_loader",
+    "serial_file_transfer.config.constants",
+    
+    # 工具模块
+    "serial_file_transfer.utils",
+    "serial_file_transfer.utils.logger",
+    "serial_file_transfer.utils.format_utils",
+    "serial_file_transfer.utils.progress",
+    "serial_file_transfer.utils.path_utils",
+    "serial_file_transfer.utils.retry",
+    "serial_file_transfer.utils.resource_path",
+    "serial_file_transfer.utils.error_handler",
+    
+    # 第三方库
     "serial",               # 串口通信核心
     "serial.tools",         # 串口工具
     "serial.tools.list_ports",  # 串口列表
     "yaml",                 # PyYAML配置解析
+    
+    # Tkinter GUI框架
     "tkinter",             # GUI框架核心
     "tkinter.ttk",         # GUI主题组件
     "tkinter.filedialog",  # 文件对话框
     "tkinter.messagebox",  # 消息框
+    "tkinter.scrolledtext",  # 滚动文本框
 ]
 
 # PyInstaller收集模块（仅包含实际使用的）
@@ -683,70 +724,130 @@ class BuildManager:
         print_success("环境检查完成")
         return True
 
-    def install_dependencies(self) -> bool:
-        """安装构建依赖"""
-        print_step("依赖管理", "检查并安装必要的构建依赖...")
+    def check_dependencies(self) -> bool:
+        """检查依赖（智能跳过已安装的）"""
+        print_step("依赖检查", "检查构建所需依赖...")
 
-        # 检查PyInstaller是否已安装
-        print_info("检查PyInstaller...")
-        success, output = run_command([sys.executable, "-c", "import PyInstaller"], check=False)
+        # 定义所有需要的依赖：{包名: (导入名, 版本要求)}
+        required_deps = {
+            "PyInstaller": ("PyInstaller", "pyinstaller>=6.0"),
+            "pyserial": ("serial", "pyserial>=3.5"),
+            "PyYAML": ("yaml", "PyYAML>=6.0"),
+        }
 
-        if not success:
-            print_info("PyInstaller未安装，正在安装...")
-            success, output = run_command(
-                [sys.executable, "-m", "pip", "install", "pyinstaller"],
-                "安装PyInstaller"
-            )
-            if not success:
-                print_error("PyInstaller安装失败")
-                print_error(output)
-                return False
-            print_success("PyInstaller安装成功")
-        else:
-            print_success("PyInstaller已安装")
+        # 检查每个依赖的安装状态
+        missing = []
+        installed = []
 
-        # 安装项目依赖
-        requirements_path = self.project_root / REQUIREMENTS_FILE
-        if requirements_path.exists():
-            print_info(f"安装项目依赖: {REQUIREMENTS_FILE}")
-            
-            # 先升级pip到最新版本
-            print_info("升级pip到最新版本...")
-            success, output = run_command(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-                "升级pip"
-            )
-            if not success:
-                print_warning("pip升级失败，继续使用当前版本")
-            
-            # 安装核心依赖（仅实际使用的）
-            print_info("安装核心运行时依赖...")
-            core_deps = ["pyserial==3.5", "PyYAML==6.0.3", "colorama==0.4.6"]
-            for dep in core_deps:
-                success, output = run_command(
-                    [sys.executable, "-m", "pip", "install", dep],
-                    f"安装 {dep}"
-                )
-                if not success:
-                    print_warning(f"依赖 {dep} 安装失败，可能影响功能")
-            
-            # 安装构建依赖
-            print_info("安装构建依赖...")
-            build_deps = ["pyinstaller==6.11.0", "pyinstaller-hooks-contrib==2025.6"]
-            for dep in build_deps:
-                success, output = run_command(
-                    [sys.executable, "-m", "pip", "install", dep],
-                    f"安装 {dep}"
-                )
-                if not success:
-                    print_error(f"构建依赖 {dep} 安装失败")
+        for package_name, (module_name, version_spec) in required_deps.items():
+            try:
+                __import__(module_name)
+                installed.append(package_name)
+            except ImportError:
+                missing.append(version_spec)
+
+        # 显示已安装的依赖
+        if installed:
+            print_success(f"✅ 已安装依赖: {', '.join(installed)}")
+
+        # 如果全部已安装，直接跳过
+        if not missing:
+            print_success("✅ 所有构建依赖已就绪，跳过安装步骤")
+            print()
+            return True
+
+        # 有缺失依赖，提示用户
+        print()
+        print_warning(f"⚠️  检测到 {len(missing)} 个缺失的依赖包")
+        print()
+        print_info("缺失的依赖:")
+        for dep in missing:
+            print(f"   • {dep}")
+        print()
+
+        # 测试模式自动选择安装
+        if self.test_mode:
+            print_info("测试模式: 自动安装缺失依赖")
+            return self._install_missing_deps(missing)
+
+        # 提供选项给用户
+        print_info("安装选项:")
+        print(f"   {Colors.GREEN}1. 自动安装缺失的依赖（推荐）{Colors.END}")
+        print(f"   {Colors.YELLOW}2. 我稍后手动安装{Colors.END}")
+        print(f"   {Colors.RED}3. 取消构建{Colors.END}")
+        print()
+
+        while True:
+            try:
+                choice = input("请选择 (1/2/3): ").strip()
+
+                if choice == "1":
+                    # 自动安装
+                    print()
+                    return self._install_missing_deps(missing)
+                elif choice == "2":
+                    # 手动安装提示
+                    print()
+                    print_info("请手动执行以下命令安装依赖:")
+                    print(f"   {Colors.CYAN}pip install {' '.join(missing)}{Colors.END}")
+                    print()
+                    print_warning("安装完成后请重新运行构建脚本")
                     return False
-            
-            print_success("项目依赖安装完成")
-        else:
-            print_info("跳过项目依赖安装（未找到requirements.txt）")
+                elif choice == "3":
+                    # 取消构建
+                    print()
+                    print_error("用户取消构建")
+                    return False
+                else:
+                    print_warning("请输入 1、2 或 3")
 
-        print_success("依赖管理完成")
+            except KeyboardInterrupt:
+                print()
+                print_error("用户中断操作")
+                return False
+            except Exception as e:
+                print_error(f"输入处理异常: {e}")
+                return False
+
+    def _install_missing_deps(self, packages: List[str]) -> bool:
+        """安装缺失的依赖包"""
+        print_info(f"开始安装 {len(packages)} 个依赖包...")
+        print()
+
+        # 先升级pip（静默处理）
+        print_info("升级 pip 到最新版本...")
+        success, _ = run_command(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+            check=False
+        )
+        if success:
+            print_success("pip 已升级")
+        else:
+            print_warning("pip 升级失败，继续使用当前版本")
+
+        print()
+
+        # 安装每个缺失的包
+        for package_spec in packages:
+            print_info(f"正在安装: {package_spec}")
+            success, output = run_command(
+                [sys.executable, "-m", "pip", "install", package_spec],
+                check=False
+            )
+
+            if not success:
+                print_error(f"❌ {package_spec} 安装失败")
+                print_error(output)
+                print()
+                print_error("依赖安装失败，无法继续构建")
+                print_info("您可以手动安装后重试")
+                return False
+
+            print_success(f"✅ {package_spec} 安装成功")
+
+        print()
+        print_success("🎉 所有依赖安装完成！")
+        print()
         return True
 
     def clean_previous_builds(self) -> bool:
@@ -1122,7 +1223,7 @@ class BuildManager:
             if not self.check_environment():
                 return False
 
-            if not self.install_dependencies():
+            if not self.check_dependencies():
                 return False
 
             if not self.clean_previous_builds():
