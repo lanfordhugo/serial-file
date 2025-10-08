@@ -82,6 +82,44 @@ class ColoredFormatter(logging.Formatter):
 # 全局日志器字典
 _loggers = {}
 
+# 全局额外handler列表（用于GUI等场景注册额外的日志处理器）
+_extra_handlers = []
+
+
+def register_extra_handler(handler: logging.Handler) -> None:
+    """
+    注册额外的日志处理器到所有日志器
+    
+    主要用于GUI等场景，需要将底层模块的日志同时输出到UI界面。
+    调用此函数后，所有已创建和未来创建的日志器都会添加此handler。
+    
+    Args:
+        handler: 要注册的日志处理器
+    """
+    if handler not in _extra_handlers:
+        _extra_handlers.append(handler)
+        
+        # 为所有已创建的日志器添加此handler
+        for logger in _loggers.values():
+            if handler not in logger.handlers:
+                logger.addHandler(handler)
+
+
+def unregister_extra_handler(handler: logging.Handler) -> None:
+    """
+    移除已注册的额外日志处理器
+    
+    Args:
+        handler: 要移除的日志处理器
+    """
+    if handler in _extra_handlers:
+        _extra_handlers.remove(handler)
+        
+        # 从所有日志器中移除此handler
+        for logger in _loggers.values():
+            if handler in logger.handlers:
+                logger.removeHandler(handler)
+
 
 def setup_logger(
     name: str = "serial_file_transfer",
@@ -89,6 +127,7 @@ def setup_logger(
     log_file: Optional[str] = None,
     console_output: bool = True,
     file_output: bool = True,
+    enable_propagate: bool = False,
 ) -> logging.Logger:
     """
     设置日志器
@@ -99,6 +138,7 @@ def setup_logger(
         log_file: 日志文件路径，None表示使用默认路径
         console_output: 是否输出到控制台
         file_output: 是否输出到文件
+        enable_propagate: 是否允许日志传播到父日志器（默认False以避免重复输出）
 
     Returns:
         配置好的日志器
@@ -141,8 +181,13 @@ def setup_logger(
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
 
-    # 防止重复输出
-    logger.propagate = False
+    # 添加全局注册的额外处理器
+    for extra_handler in _extra_handlers:
+        if extra_handler not in logger.handlers:
+            logger.addHandler(extra_handler)
+
+    # 防止重复输出（可配置）
+    logger.propagate = enable_propagate
 
     return logger
 

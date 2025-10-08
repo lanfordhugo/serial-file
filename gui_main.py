@@ -28,6 +28,7 @@ from serial_file_transfer.config.config_loader import ConfigLoader
 from serial_file_transfer.transfer.sender import FileSender
 from serial_file_transfer.transfer.receiver import FileReceiver
 from serial_file_transfer.transfer.file_manager import SenderFileManager, ReceiverFileManager
+from serial_file_transfer.utils.logger import register_extra_handler, unregister_extra_handler
 import logging
 
 
@@ -105,6 +106,9 @@ class SerialTransferGUI:
         # 日志更新定时器ID
         self.log_update_timer: Optional[str] = None
 
+        # 绑定窗口关闭事件，确保清理资源
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
         # 显示模式选择界面
         self.show_mode_selection()
 
@@ -165,14 +169,20 @@ class SerialTransferGUI:
         for handler in self.serial_logger.handlers[:]:
             self.serial_logger.removeHandler(handler)
 
-        # 添加队列处理器到两个logger
-        queue_handler = QueueHandler(self.log_queue)
+        # 创建队列处理器
+        self.queue_handler = QueueHandler(self.log_queue)
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
         )
-        queue_handler.setFormatter(formatter)
-        self.logger.addHandler(queue_handler)
-        self.serial_logger.addHandler(queue_handler)
+        self.queue_handler.setFormatter(formatter)
+        
+        # 添加到GUI层的日志器
+        self.logger.addHandler(self.queue_handler)
+        self.serial_logger.addHandler(self.queue_handler)
+        
+        # 【关键】注册到全局日志系统，让所有底层模块的日志也能进入UI
+        # 这样FileSender/FileReceiver等模块的logger.info也会显示在GUI中
+        register_extra_handler(self.queue_handler)
 
     # ==================== 视图切换核心方法 ====================
     
@@ -1572,6 +1582,24 @@ class SerialTransferGUI:
         if log_text:
             log_text.delete(1.0, tk.END)
             self.log_info("日志已清空")
+
+    def on_closing(self) -> None:
+        """窗口关闭时的清理操作"""
+        # 停止所有传输线程
+        self.is_transferring = False
+        self._stop_receive_monitoring()
+        
+        # 停止日志更新定时器
+        if self.log_update_timer:
+            self.root.after_cancel(self.log_update_timer)
+            self.log_update_timer = None
+        
+        # 注销全局日志处理器
+        if hasattr(self, 'queue_handler'):
+            unregister_extra_handler(self.queue_handler)
+        
+        # 关闭窗口
+        self.root.destroy()
 
 
 def main() -> None:
