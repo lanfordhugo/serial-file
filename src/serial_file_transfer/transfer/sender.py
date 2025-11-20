@@ -72,12 +72,48 @@ class FileSender:
         # 进度条实例
         self.progress_bar: Optional[ProgressBar] = None
 
+        # 取消传播控制
+        self._cancel_signal_sent: bool = False  # 是否已向对端发送过取消命令
+        self._propagate_cancel: bool = True     # 是否需要向对端传播本端的取消事件
+
         # 如果提供了文件路径，立即初始化
         if file_path:
             self.init_file(file_path)
 
     def _is_cancelled(self) -> bool:
-        return self.cancel_event is not None and self.cancel_event.is_set()
+        """检查是否已取消，并在需要时向对端发送取消命令"""
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            self._send_cancel_if_needed()
+            return True
+        return False
+
+    def _send_cancel_if_needed(self) -> None:
+        """在本端取消时向对端发送取消传输命令（最多发送一次，连发3帧）"""
+        if not self._propagate_cancel:
+            return
+        if self._cancel_signal_sent:
+            return
+        if self.serial_manager is None or not self.serial_manager.is_open:
+            return
+
+        try:
+            frame = FrameHandler.pack_frame(SerialCommand.CANCEL_TRANSFER, b"")
+            if not frame:
+                return
+            for _ in range(3):
+                self.serial_manager.write(frame)
+            self._cancel_signal_sent = True
+            logger.info("已向对端发送取消传输命令（3次）")
+        except Exception as e:
+            logger.error(f"发送取消传输命令失败: {e}")
+
+    def _handle_remote_cancel(self, context: str) -> None:
+        """处理从对端收到的取消命令，等同于本端点击取消"""
+        logger.warning(f"收到对端取消传输请求，上下文: {context}，即将终止当前发送")
+        # 远端取消不再向对端回传取消命令，避免相互触发
+        self._propagate_cancel = False
+        if self.cancel_event is not None:
+            self.cancel_event.set()
 
     def init_file(self, file_path: Union[str, Path]) -> bool:
         """
@@ -177,6 +213,10 @@ class FileSender:
             if cmd is None or data is None:
                 continue
 
+            if cmd == SerialCommand.CANCEL_TRANSFER:
+                self._handle_remote_cancel("wait_for_file_size_request")
+                return False
+
             if cmd != SerialCommand.REQUEST_FILE_SIZE:
                 # 检查是否是预期的协议命令
                 if cmd == SerialCommand.SYNC_REQUEST:
@@ -236,6 +276,10 @@ class FileSender:
             if cmd is None or data is None:
                 logger.debug(f"📥 未接收到有效帧 (第 {request_count} 次)")
                 continue
+
+            if cmd == SerialCommand.CANCEL_TRANSFER:
+                self._handle_remote_cancel("wait_for_filename_request")
+                return False
 
             logger.debug(f"📥 接收到帧: cmd=0x{cmd:02X}, data={data.hex() if data else 'None'}")
 
@@ -369,6 +413,10 @@ class FileSender:
                     
                     if cmd is None:
                         continue
+
+                    if cmd == SerialCommand.CANCEL_TRANSFER:
+                        self._handle_remote_cancel("_send_data_package.wait_ack")
+                        return False
                     
                     if cmd == SerialCommand.ACK:
                         # vNext: 解析ACK中的offset
@@ -451,6 +499,10 @@ class FileSender:
 
             if cmd is None or data is None:
                 return True  # 继续等待
+
+            if cmd == SerialCommand.CANCEL_TRANSFER:
+                self._handle_remote_cancel("_wait_for_data_request")
+                return False
 
             if cmd != SerialCommand.REQUEST_DATA:
                 # 检查是否是预期的协议命令

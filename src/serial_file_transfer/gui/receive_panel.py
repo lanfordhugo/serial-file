@@ -387,12 +387,6 @@ class ReceivePanel:
             return
         if self.cancel_event:
             self.cancel_event.set()
-        # 主动关闭串口，打断可能正在进行的阻塞读取，加快取消生效
-        try:
-            if self.receive_manager and getattr(self.receive_manager, "serial_manager", None):
-                self.receive_manager.serial_manager.close()
-        except Exception as e:
-            self.logger.error(f"取消监听时关闭串口失败: {e}")
         if self.log_panel:
             self.log_panel.update_status("监听取消中...", self.theme.colors.warning_color)
     

@@ -34,6 +34,9 @@ class SerialCommand(IntEnum):
     STATE_SYNC_REPLY = 0x6A     # 协议状态同步回复 'j'
     PROTOCOL_RESET = 0x6B       # 协议重置命令 'k'
 
+    # 传输控制命令
+    CANCEL_TRANSFER = 0x6C      # 取消当前传输
+
     # 文件名相关命令
     REQUEST_FILE_NAME = 0x51  # 请求文件名 'Q'
     REPLY_FILE_NAME = 0x52  # 回复文件名 'R'
