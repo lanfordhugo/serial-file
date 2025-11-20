@@ -27,7 +27,9 @@ class LogPanel:
         on_start: Callable[[], None],
         on_clear_log: Callable[[], None],
         start_button_text: str = "开始传输",
-        mode: str = "send"
+        mode: str = "send",
+        on_cancel: Optional[Callable[[], None]] = None,
+        cancel_button_text: Optional[str] = None,
     ):
         """
         初始化日志面板
@@ -47,6 +49,8 @@ class LogPanel:
         self.on_start = on_start
         self.on_clear_log = on_clear_log
         self.mode = mode
+        self.on_cancel = on_cancel
+        self.cancel_button_text = cancel_button_text
         
         # 组件引用
         self.log_text: Optional[scrolledtext.ScrolledText] = None
@@ -56,6 +60,7 @@ class LogPanel:
         self.speed_label: Optional[tk.Label] = None
         self.status_label: Optional[tk.Label] = None
         self.start_button: Optional[tk.Button] = None
+        self.cancel_button: Optional[tk.Button] = None
         
         # 日志更新定时器
         self.log_update_timer: Optional[str] = None
@@ -190,6 +195,25 @@ class LogPanel:
             pady=12
         )
         clear_button.pack(side=tk.LEFT)
+
+        if self.on_cancel:
+            cancel_text = self.cancel_button_text or "⏹ 取消"
+            self.cancel_button = tk.Button(
+                button_frame,
+                text=cancel_text,
+                command=self.on_cancel,
+                font=("微软雅黑", 11),
+                bg=self.theme.colors.secondary_bg,
+                fg=self.theme.colors.text_color,
+                activebackground=self.theme.colors.text_secondary,
+                activeforeground="white",
+                relief="solid",
+                bd=1,
+                cursor="hand2",
+                padx=25,
+                pady=12
+            )
+            self.cancel_button.pack(side=tk.LEFT, padx=(10, 0))
     
     def _handle_clear_log(self) -> None:
         """处理清空日志"""

@@ -8,6 +8,7 @@
 import os
 import struct
 import time
+import threading
 from pathlib import Path
 from typing import Optional, Union, cast
 
@@ -33,6 +34,7 @@ class FileSender:
         file_path: Optional[Union[str, Path]] = None,
         config: Optional[TransferConfig] = None,
         progress_callback: Optional[callable] = None,
+        cancel_event: Optional[threading.Event] = None,
     ):
         """
         初始化文件发送器
@@ -46,6 +48,7 @@ class FileSender:
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
         self.progress_callback = progress_callback
+        self.cancel_event = cancel_event
 
         # 传输状态
         self.send_size = 0
@@ -72,6 +75,9 @@ class FileSender:
         # 如果提供了文件路径，立即初始化
         if file_path:
             self.init_file(file_path)
+
+    def _is_cancelled(self) -> bool:
+        return self.cancel_event is not None and self.cancel_event.is_set()
 
     def init_file(self, file_path: Union[str, Path]) -> bool:
         """
@@ -154,6 +160,9 @@ class FileSender:
 
         start_time = time.time()
         while True:
+            if self._is_cancelled():
+                logger.info("发送被取消，停止等待文件大小请求")
+                return False
             # 检查超时 - 使用数据传输超时，因为这是传输过程中的步骤
             if time.time() - start_time > self.config.data_timeout:
                 logger.error(f"等待文件大小请求超时: {self.config.data_timeout}秒")
@@ -206,6 +215,9 @@ class FileSender:
         start_time = time.time()
         request_count = 0
         while True:
+            if self._is_cancelled():
+                logger.info("发送被取消，停止等待文件名请求")
+                return False
             # 检查超时
             elapsed = time.time() - start_time
             if elapsed > self.config.request_timeout:
@@ -428,6 +440,9 @@ class FileSender:
             成功返回True，传输完成或失败返回False
         """
         try:
+            if self._is_cancelled():
+                logger.info("发送被取消，停止等待数据请求")
+                return False
             # 读取数据请求
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
@@ -520,6 +535,9 @@ class FileSender:
             )
 
             while self.send_size < self.file_size:
+                if self._is_cancelled():
+                    logger.info("发送被取消，终止文件传输")
+                    break
                 # 等待并处理数据请求
                 if not self._wait_for_data_request():
                     break

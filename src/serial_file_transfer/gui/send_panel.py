@@ -63,6 +63,7 @@ class SendPanel:
         # 传输状态
         self.is_transferring = False
         self.transfer_thread: Optional[threading.Thread] = None
+        self.cancel_event: Optional[threading.Event] = None
         
         self._create_ui()
         self._refresh_ports()
@@ -95,7 +96,9 @@ class SendPanel:
             on_start=self._start_transfer,
             on_clear_log=self._clear_log,
             start_button_text="📤 发送文件",
-            mode="send"
+            mode="send",
+            on_cancel=self._cancel_transfer,
+            cancel_button_text="⏹ 取消发送",
         )
     
     def _create_header(self) -> None:
@@ -388,6 +391,8 @@ class SendPanel:
             messagebox.showerror("错误", f"文件或文件夹不存在: {file_path}")
             return
         
+        self.cancel_event = threading.Event()
+        
         # 更新UI状态
         self.is_transferring = True
         if self.log_panel:
@@ -401,6 +406,15 @@ class SendPanel:
             daemon=True
         )
         self.transfer_thread.start()
+    
+    def _cancel_transfer(self) -> None:
+        """取消传输"""
+        if not self.is_transferring:
+            return
+        if self.cancel_event:
+            self.cancel_event.set()
+        if self.log_panel:
+            self.log_panel.update_status("传输取消中...", self.theme.colors.warning_color)
     
     def _transfer_worker(self) -> None:
         """传输工作线程"""
@@ -436,7 +450,8 @@ class SendPanel:
                     serial_manager,
                     file_path,
                     transfer_config,
-                    progress_callback=self._progress_callback
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
                 )
                 
                 self.logger.info("等待接收端请求文件名...")
@@ -461,7 +476,8 @@ class SendPanel:
                     folder_path=file_path,
                     serial_manager=serial_manager,
                     config=transfer_config,
-                    progress_callback=self._progress_callback
+                    progress_callback=self._progress_callback,
+                    cancel_event=self.cancel_event,
                 )
                 
                 success = file_manager.start_batch_send()
@@ -476,12 +492,18 @@ class SendPanel:
             
             serial_manager.close()
             
+            cancelled = self.cancel_event is not None and self.cancel_event.is_set()
+            
             if success:
                 self.logger.info("✅ 传输完成")
                 if self.log_panel:
                     self.parent.after(0, lambda: self.log_panel.update_status("传输成功", self.theme.colors.success_color))
                     self.parent.after(0, lambda: self.log_panel.progress_var.set(100))
                 self.parent.after(0, lambda: messagebox.showinfo("成功", "文件传输完成！"))
+            elif cancelled:
+                self.logger.info("⚠ 传输已被用户取消")
+                if self.log_panel:
+                    self.parent.after(0, lambda: self.log_panel.update_status("传输已取消", self.theme.colors.warning_color))
             else:
                 self.logger.error("❌ 传输失败")
                 if self.log_panel:

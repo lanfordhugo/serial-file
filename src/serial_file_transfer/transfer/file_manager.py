@@ -9,6 +9,7 @@ import os
 import time
 from pathlib import Path
 from typing import List, Optional, Union
+import threading
 
 from ..config.settings import TransferConfig
 from ..config.constants import BatchTransferState
@@ -30,6 +31,7 @@ class SenderFileManager:
         serial_manager: SerialManager,
         config: Optional[TransferConfig] = None,
         progress_callback: Optional[callable] = None,
+        cancel_event: Optional[threading.Event] = None,
     ):
         """
         初始化发送端文件管理器
@@ -44,9 +46,15 @@ class SenderFileManager:
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
         self.progress_callback = progress_callback
+        self.cancel_event = cancel_event
 
         self.file_list: List[str] = []
-        self.sender = FileSender(serial_manager, config=config, progress_callback=progress_callback)
+        self.sender = FileSender(
+            serial_manager,
+            config=config,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
 
         # 扫描文件
         self._scan_files()
@@ -102,6 +110,9 @@ class SenderFileManager:
             logger.info("开始批量文件发送...")
 
             while True:
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    logger.info("检测到取消请求，停止批量文件发送")
+                    return False
                 # 获取下一个文件名
                 filename = self.get_next_filename()
                 if filename is None:
@@ -153,6 +164,7 @@ class ReceiverFileManager:
         serial_manager: SerialManager,
         config: Optional[TransferConfig] = None,
         progress_callback: Optional[callable] = None,
+        cancel_event: Optional[threading.Event] = None,
     ):
         """
         初始化接收端文件管理器
@@ -167,8 +179,14 @@ class ReceiverFileManager:
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
         self.progress_callback = progress_callback
+        self.cancel_event = cancel_event
 
-        self.receiver = FileReceiver(serial_manager, config=config, progress_callback=progress_callback)
+        self.receiver = FileReceiver(
+            serial_manager,
+            config=config,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+        )
         
         # 批量传输状态机
         self.state = BatchTransferState.IDLE
@@ -198,6 +216,9 @@ class ReceiverFileManager:
         self._set_state(BatchTransferState.REQUESTING_NAME, "开始请求文件名")
         
         for attempt in range(3):  # 最多尝试3次
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                logger.info("检测到取消请求，中止获取文件名")
+                return None
             if self.receiver.send_filename_request():
                 filename = self.receiver.receive_filename()
                 if filename is not None:
@@ -240,6 +261,10 @@ class ReceiverFileManager:
             self._set_state(BatchTransferState.IDLE, "初始化批量接收")
 
             while self.state not in [BatchTransferState.COMPLETED, BatchTransferState.FAILED, BatchTransferState.TERMINATED]:
+                if self.cancel_event is not None and self.cancel_event.is_set():
+                    logger.info("检测到取消请求，停止批量文件接收")
+                    self._set_state(BatchTransferState.TERMINATED, "用户取消")
+                    break
                 # 1. 请求文件名
                 filename = self._request_filename()
                 

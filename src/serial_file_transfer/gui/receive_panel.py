@@ -73,6 +73,7 @@ class ReceivePanel:
         self.receive_state = ReceiveUIState.READY
         self.receive_thread: Optional[threading.Thread] = None
         self.receive_manager: Optional[ReceiverFileManager] = None
+        self.cancel_event: Optional[threading.Event] = None
         
         self._create_ui()
         self._refresh_ports()
@@ -105,7 +106,9 @@ class ReceivePanel:
             on_start=self._start_monitoring,
             on_clear_log=self._clear_log,
             start_button_text="🔄 开始监听",
-            mode="receive"
+            mode="receive",
+            on_cancel=self._cancel_monitoring,
+            cancel_button_text="⏹ 取消接收",
         )
     
     def _create_header(self) -> None:
@@ -359,6 +362,8 @@ class ReceivePanel:
             messagebox.showerror("错误", "请选择接收文件保存目录")
             return
         
+        self.cancel_event = threading.Event()
+        
         # 更新UI状态
         if self.log_panel:
             self.log_panel.set_button_state("disabled", "🔄 监听中...")
@@ -375,6 +380,21 @@ class ReceivePanel:
         self.receive_thread.start()
         
         self.logger.info(f"开始监听串口 {port}，保存目录: {recv_dir}")
+
+    def _cancel_monitoring(self) -> None:
+        """取消监听"""
+        if not (self.receive_thread and self.receive_thread.is_alive()):
+            return
+        if self.cancel_event:
+            self.cancel_event.set()
+        # 主动关闭串口，打断可能正在进行的阻塞读取，加快取消生效
+        try:
+            if self.receive_manager and getattr(self.receive_manager, "serial_manager", None):
+                self.receive_manager.serial_manager.close()
+        except Exception as e:
+            self.logger.error(f"取消监听时关闭串口失败: {e}")
+        if self.log_panel:
+            self.log_panel.update_status("监听取消中...", self.theme.colors.warning_color)
     
     def _receive_monitor_worker(self, port: str, save_path: Path) -> None:
         """接收监听工作线程"""
@@ -401,7 +421,8 @@ class ReceivePanel:
                 folder_path=save_path,
                 serial_manager=serial_manager,
                 config=transfer_config,
-                progress_callback=self._progress_callback
+                progress_callback=self._progress_callback,
+                cancel_event=self.cancel_event,
             )
             
             # 启动批量接收（阻塞调用）
@@ -410,11 +431,17 @@ class ReceivePanel:
             
             serial_manager.close()
             
+            cancelled = self.cancel_event is not None and self.cancel_event.is_set()
+            
             if success:
                 self.receive_state = ReceiveUIState.COMPLETED
                 self.logger.info("✅ 接收完成")
                 self.parent.after(0, lambda: self.log_panel.update_status("✅ 接收完成", self.theme.colors.success_color))
                 self.parent.after(0, lambda: messagebox.showinfo("成功", f"文件已保存到: {save_path}"))
+            elif cancelled:
+                self.receive_state = ReceiveUIState.FAILED
+                self.logger.info("⚠ 接收已被用户取消")
+                self.parent.after(0, lambda: self.log_panel.update_status("监听已取消", self.theme.colors.warning_color))
             else:
                 self.receive_state = ReceiveUIState.FAILED
                 self.logger.error("❌ 接收失败")
@@ -445,6 +472,8 @@ class ReceivePanel:
     def _stop_monitoring(self) -> None:
         """停止接收监听"""
         if self.receive_thread and self.receive_thread.is_alive():
+            if self.cancel_event:
+                self.cancel_event.set()
             self.receive_state = ReceiveUIState.FAILED
             self.receive_thread.join(timeout=2.0)
             self.logger.info("接收监听已停止")
@@ -452,6 +481,7 @@ class ReceivePanel:
         self.receive_thread = None
         self.receive_manager = None
         self.receive_state = ReceiveUIState.READY
+        self.cancel_event = None
     
     def _progress_callback(self, current: int, total: int, status_text: str = "") -> None:
         """进度回调"""

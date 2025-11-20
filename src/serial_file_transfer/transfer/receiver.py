@@ -8,6 +8,7 @@
 import os
 import struct
 import time
+import threading
 from pathlib import Path
 from typing import Optional, Union
 
@@ -34,6 +35,7 @@ class FileReceiver:
         save_path: Optional[Union[str, Path]] = None,
         config: Optional[TransferConfig] = None,
         progress_callback: Optional[callable] = None,
+        cancel_event: Optional[threading.Event] = None,
     ):
         """
         初始化文件接收器
@@ -47,6 +49,7 @@ class FileReceiver:
         self.serial_manager = serial_manager
         self.config = config or TransferConfig()
         self.progress_callback = progress_callback
+        self.cancel_event = cancel_event
 
         # 接收状态
         self.save_path = Path(save_path) if save_path else None
@@ -73,6 +76,9 @@ class FileReceiver:
 
         # 进度条实例
         self.progress_bar: Optional[ProgressBar] = None
+
+    def _is_cancelled(self) -> bool:
+        return self.cancel_event is not None and self.cancel_event.is_set()
 
     def init_receive_params(self, save_path: Union[str, Path]) -> None:
         """
@@ -146,6 +152,9 @@ class FileReceiver:
             文件大小，失败时返回None
         """
         try:
+            if self._is_cancelled():
+                logger.info("接收被取消，停止等待文件大小")
+                return None
             # 读取回复
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
@@ -176,6 +185,9 @@ class FileReceiver:
             文件名或相对路径，失败时返回None
         """
         try:
+            if self._is_cancelled():
+                logger.info("接收被取消，停止等待文件名")
+                return None
             # 读取回复（变长编码：2字节长度 + 数据）
             logger.debug(f"📥 等待接收文件名回复，期望命令: 0x{SerialCommand.REPLY_FILE_NAME:02X}")
             cmd, data = FrameHandler.read_frame(
@@ -234,6 +246,9 @@ class FileReceiver:
             成功返回True，失败返回False
         """
         try:
+            if self._is_cancelled():
+                logger.info("接收被取消，放弃发送数据请求")
+                return False
             request_data = struct.pack("<IH", addr, length)
             frame = FrameHandler.pack_frame(SerialCommand.REQUEST_DATA, request_data)
 
@@ -255,6 +270,9 @@ class FileReceiver:
             成功返回True，失败返回False
         """
         try:
+            if self._is_cancelled():
+                logger.info("接收被取消，停止接收数据包")
+                return False
             # 读取数据包
             cmd, data = FrameHandler.read_frame(
                 self.serial_manager.port,  # type: ignore[arg-type]
@@ -368,7 +386,14 @@ class FileReceiver:
         """
         import time
 
-        def _try_receive():
+        CANCELLED = object()
+
+        def _try_receive() -> bool:
+            """单次发送请求并接收数据包"""
+            if self._is_cancelled():
+                logger.info("接收被取消，跳过数据块重试")
+                return False
+
             # 发送请求
             if not self.send_data_request(addr, length):
                 logger.warning(f"发送数据请求失败，地址: {addr}")
@@ -381,30 +406,42 @@ class FileReceiver:
                 logger.warning(f"接收地址 {addr} 的数据包超时或失败")
                 return False
 
+        def _try_receive_or_cancel():
+            if self._is_cancelled():
+                logger.info("接收被取消，跳过数据块重试")
+                return CANCELLED
+            return _try_receive()
+
         # ===== 第一轮：快速重试 =====
-        success = retry_call(
-            _try_receive,
+        if self._is_cancelled():
+            logger.info("接收被取消，跳过快速重试")
+            return False
+
+        result = retry_call(
+            _try_receive_or_cancel,
             max_retry=3,
             base_delay=0.1,
             logger=logger,
         )
-        
-        if success:
+
+        if result is CANCELLED:
+            return False
+        if result:
             return True
-        
+
         # ===== 串口重启恢复（跳过无效的清缓冲保守重试）=====
         logger.warning(f"地址 {addr} 快速重试失败，立即执行串口重启恢复...")
-        
+
         try:
             # 记录当前串口配置
             original_baudrate = self.serial_manager.config.baudrate
             logger.info(f"准备重启串口（当前波特率: {original_baudrate}）...")
-            
+
             # 关闭串口
             self.serial_manager.close()
             logger.debug("串口已关闭")
             time.sleep(1.0)  # 等待串口完全关闭和硬件稳定
-            
+
             # 重新打开串口
             if self.serial_manager.open():
                 logger.info(f"串口重启成功（波特率: {self.serial_manager.config.baudrate}）")
@@ -412,36 +449,41 @@ class FileReceiver:
             else:
                 logger.error("串口重启失败，无法继续传输")
                 return False
-                
+
         except Exception as e:
             logger.error(f"串口重启过程发生异常: {e}")
             # 尝试确保串口处于可用状态
             try:
                 if not self.serial_manager.is_open:
                     self.serial_manager.open()
-            except:
+            except Exception:
                 pass
             return False
-        
+
         # ===== 第二轮：串口重启后重试 =====
+        if self._is_cancelled():
+            logger.info("接收被取消，跳过重启后的重试")
+            return False
+
         logger.info(f"地址 {addr} 串口重启完成，开始重启后重试...")
-        success = retry_call(
-            _try_receive,
+        result = retry_call(
+            _try_receive_or_cancel,
             max_retry=5,
             base_delay=0.2,
             logger=logger,
         )
-        
-        if success:
+
+        if result is CANCELLED:
+            return False
+        if result:
             logger.info(f"✓ 地址 {addr} 串口重启后传输成功")
         else:
             logger.error(f"✗ 地址 {addr} 串口重启后仍然失败，该地址数据块无法传输")
-        
-        return success if success is not None else False
+
+        return bool(result)
 
     def start_transfer(self) -> bool:
-        """
-        开始文件传输
+        """开始文件传输
 
         Returns:
             成功返回True，失败返回False
@@ -451,6 +493,10 @@ class FileReceiver:
             return False
 
         try:
+            if self._is_cancelled():
+                logger.info("接收被取消，终止文件传输")
+                return False
+
             # 获取文件大小
             logger.info("请求文件大小...")
             logger.info(
@@ -462,17 +508,24 @@ class FileReceiver:
             )
 
             def _try_get_size():
+                if self._is_cancelled():
+                    return None
                 if not self.send_file_size_request():
                     return None
                 return self.receive_file_size()
 
             file_size = retry_call(
-                _try_get_size, max_retry=3, base_delay=0.2, logger=logger
+                _try_get_size,
+                max_retry=3,
+                base_delay=0.2,
+                logger=logger,
             )
 
             if file_size is None or file_size <= 0:
                 logger.error("无法获取有效的文件大小，终止传输。")
                 return False
+
+            self.file_size = file_size
 
             # 打开文件保存句柄
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -487,6 +540,10 @@ class FileReceiver:
                 self.progress_bar = ProgressBar(total=self.file_size, show_rate=True)
 
             while self.recv_size < self.file_size:
+                if self._is_cancelled():
+                    logger.info("接收被取消，终止文件接收循环")
+                    break
+
                 # 计算请求长度
                 remain_len = self.file_size - self.recv_size
                 request_len = min(remain_len, self.config.max_data_length)
@@ -509,7 +566,7 @@ class FileReceiver:
                 # 更新进度条
                 if self.config.show_progress and self.progress_bar:
                     self.progress_bar.update(self.recv_size)
-                
+
                 # 调用进度回调
                 if self.progress_callback:
                     self.progress_callback(self.recv_size, self.file_size)
@@ -521,18 +578,22 @@ class FileReceiver:
             if self.config.show_progress and self.progress_bar:
                 self.progress_bar.finish()
 
-            elapsed_time = time.time() - start_time
-            speed_kbps = (self.file_size / elapsed_time) / 1024 if elapsed_time > 0 else 0
-            logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒，平均速度: {speed_kbps:.2f} KB/s")
+            if self.recv_size >= self.file_size:
+                elapsed_time = time.time() - start_time
+                speed_kbps = (self.file_size / elapsed_time) / 1024 if elapsed_time > 0 else 0
+                logger.info(f"文件接收完成！用时: {elapsed_time:.2f}秒，平均速度: {speed_kbps:.2f} KB/s")
 
-            # 最终校验文件大小
-            if self.save_path.stat().st_size != self.file_size:
-                logger.error(
-                    f"最终文件大小不匹配！预期: {self.file_size}，实际: {self.save_path.stat().st_size}"
-                )
+                # 最终校验文件大小
+                if self.save_path.stat().st_size != self.file_size:
+                    logger.error(
+                        f"最终文件大小不匹配！预期: {self.file_size}，实际: {self.save_path.stat().st_size}"
+                    )
+                    return False
+
+                return True
+            else:
+                logger.error("文件接收未完成")
                 return False
-
-            return True
 
         except Exception as e:
             logger.error(f"文件传输异常: {e}", exc_info=True)
